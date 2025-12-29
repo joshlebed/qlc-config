@@ -1,0 +1,13 @@
+[Unit]
+Description=QLC+ Lighting Engine
+After=network.target sound.target
+
+[Service]
+User=joshlebed
+Group=joshlebed
+ExecStart=/usr/bin/xvfb-run /usr/bin/qlcplus -p /opt/qlcplus/projects/spotlight.qxw
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
