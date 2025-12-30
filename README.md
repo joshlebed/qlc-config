@@ -191,27 +191,44 @@ sudo udevadm control --reload-rules
 # Log out and back in for group changes
 ```
 
-### Systemd Service
+### Headless Service (Systemd)
+
+Use the helper script for easy management:
 
 ```bash
-# Copy service file
-sudo cp qlcplus.service /etc/systemd/system/
+# One-time setup: install service and symlink project
+./qlc-service.sh install
 
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable qlcplus
-sudo systemctl start qlcplus
+# Start headless QLC+ (WebSocket on port 9999)
+./qlc-service.sh start
+
+# Stop service to use GUI
+./qlc-service.sh stop
 
 # Check status
-sudo systemctl status qlcplus
-journalctl -u qlcplus -f
+./qlc-service.sh status
+
+# View logs
+./qlc-service.sh logs
+
+# Stop service and open GUI for editing
+./qlc-service.sh gui
 ```
 
-### Symlink Project File
+**Service features:**
+- Runs headless with xvfb (no monitor needed)
+- WebSocket API enabled on port 9999
+- Starts in operate mode (ready to receive commands)
+- Auto-restarts on crash (max 3 times per minute)
+- Logs to journald
 
+**Manual systemd commands:**
 ```bash
-sudo mkdir -p /opt/qlcplus/projects
-ln -sf $(pwd)/spotlight.qxw /opt/qlcplus/projects/spotlight.qxw
+sudo systemctl start qlcplus    # Start
+sudo systemctl stop qlcplus     # Stop
+sudo systemctl restart qlcplus  # Restart
+sudo systemctl status qlcplus   # Status
+journalctl -u qlcplus -f        # Live logs
 ```
 
 ## GUI Configuration
@@ -336,6 +353,56 @@ uv run python ws_control.py --list
 uv run python ws_control.py --status
 ```
 
+### Scenes Not Responding (Simple Desk Override)
+
+If scenes activate but the light doesn't change, Simple Desk may be overriding them:
+
+1. Open QLC+ GUI: `make gui`
+2. Go to Simple Desk tab
+3. Click "Reset universe" to set all channels to 0
+4. Save the project
+
+Simple Desk values take priority over scenes when non-zero.
+
+### Buttons Not Working in Virtual Console
+
+Ensure QLC+ is in **Operate Mode**, not Design Mode:
+- Press the "play" button in the toolbar, or
+- Start with `-p` flag (the systemd service does this)
+
+### Solo Frame Not Working via API
+
+QLC+ Solo Frames only enforce mutual exclusivity for **GUI clicks**, not WebSocket/OSC commands. The client must implement exclusivity:
+
+```python
+# Stop all other modes before starting the new one
+for func_id in ALL_MODE_IDS:
+    if func_id != target_id:
+        client.stop_function(func_id)
+client.start_function(target_id)
+```
+
+This is already handled in `ws_control.py` and the `qlcplus` package.
+
+### Creating Smooth Fade Chasers
+
+For smooth color transitions (not abrupt jumps):
+
+1. Create Scene functions for each color
+2. Create a Chaser containing those scenes
+3. Set Speed Modes to **"Per Step"** (not "Default" or "Common")
+4. Set FadeIn and FadeOut times equal (e.g., both 2000ms)
+5. Set Hold time for how long each color stays solid
+
+Example in project file:
+```xml
+<Function ID="4" Type="Chaser" Name="mode_fade">
+  <SpeedModes FadeIn="PerStep" FadeOut="PerStep" Duration="Common"/>
+  <Step FadeIn="2000" Hold="1000" FadeOut="2000">2</Step>
+  ...
+</Function>
+```
+
 ## File Reference
 
 | File | Purpose |
@@ -347,6 +414,7 @@ uv run python ws_control.py --status
 | `osc_control.py` | Legacy OSC control (kept for compatibility) |
 | `spotlight.qxw` | QLC+ project file (XML) |
 | `qlcplus.service` | Systemd unit file for headless operation |
+| `qlc-service.sh` | Helper script for service management |
 | `pyproject.toml` | Package metadata and tool configuration |
 | `uv.lock` | Locked dependencies for reproducible installs |
 | `INTEGRATION.md` | Guide for integrating into other services |

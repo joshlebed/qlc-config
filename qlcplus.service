@@ -1,13 +1,40 @@
 [Unit]
-Description=QLC+ Lighting Engine
+Description=QLC+ Lighting Controller (Headless)
+Documentation=https://github.com/joshlebed/qlc-config
 After=network.target sound.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
+Type=simple
 User=joshlebed
 Group=joshlebed
-ExecStart=/usr/bin/xvfb-run /usr/bin/qlcplus -p /opt/qlcplus/projects/spotlight.qxw
-Restart=always
+
+# QLC+ flags:
+#   -w       Enable web access (WebSocket API on port 9999)
+#   -p       Start in operate mode (not design mode)
+#   -o       Open project file
+#   -c       Close button position (optional, for kiosk mode)
+#
+# xvfb-run: QLC+ requires a display even headless (Qt app)
+ExecStart=/usr/bin/xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
+    /usr/bin/qlcplus -w -p -o /opt/qlcplus/projects/spotlight.qxw
+
+# Restart policy
+Restart=on-failure
 RestartSec=5
+
+# Environment
+Environment=QT_QPA_PLATFORM=offscreen
+
+# Give QLC+ a runtime directory for web server
+RuntimeDirectory=qlcplus
+Environment=XDG_RUNTIME_DIR=/run/qlcplus
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qlcplus
 
 [Install]
 WantedBy=multi-user.target
