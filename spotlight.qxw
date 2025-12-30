@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Workspace>
-<Workspace xmlns="http://www.qlcplus.org/Workspace" CurrentWindow="InputOutputManager">
+<Workspace xmlns="http://www.qlcplus.org/Workspace" CurrentWindow="FunctionManager">
  <Creator>
   <Name>Q Light Controller Plus</Name>
   <Version>4.12.6</Version>
@@ -44,6 +44,30 @@
   <Function ID="3" Type="Scene" Name="mode_yellow">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
    <FixtureVal ID="0">0,255,1,255,2,0,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="5" Type="Scene" Name="mode_orange">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,128,2,0,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="6" Type="Scene" Name="mode_green">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,0,1,255,2,0,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="7" Type="Scene" Name="mode_cyan">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,0,1,255,2,255,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="8" Type="Scene" Name="mode_blue">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,0,1,0,2,255,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="9" Type="Scene" Name="mode_purple">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,255,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="10" Type="Scene" Name="mode_pink">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,64,2,128,3,0,4,255,5,0</FixtureVal>
   </Function>
  </Engine>
  <VirtualConsole>
