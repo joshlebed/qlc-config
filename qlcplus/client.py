@@ -69,11 +69,18 @@ class QLCPlusClient:
         except Exception as e:
             raise QLCPlusError(f"Failed to connect to QLC+ at {self.url}: {e}") from e
 
-    def disconnect(self) -> None:
-        """Close WebSocket connection."""
+    def disconnect(self, timeout: int = 0) -> None:
+        """
+        Close WebSocket connection.
+
+        Args:
+            timeout: Close handshake timeout in seconds. Default 0 skips the
+                     handshake to avoid a ~3 second delay. Set higher if you
+                     need a clean close handshake.
+        """
         if self._ws is not None:
             try:
-                self._ws.close()
+                self._ws.close(timeout=timeout)
             except Exception:
                 pass
             self._ws = None
