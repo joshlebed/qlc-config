@@ -1,324 +1,355 @@
-# QLC+ Lighting System Configuration
+# QLC+ Lighting Control
 
-Configuration and documentation for the QLC+ lighting control system on the media server.
+Python client library and configuration for controlling QLC+ lighting software via WebSocket API.
 
-## Architecture Overview
+## Quick Start
 
-```
-┌─────────────────┐     OSC (UDP 7700)     ┌─────────────┐
-│  Home Assistant │ ──────────────────────▶│   QLC+      │
-│  or Python      │                        │  (headless) │
-└─────────────────┘                        └──────┬──────┘
-                                                  │ DMX512
-                                                  ▼
-                                           ┌─────────────┐
-                                           │  USB-DMX    │
-                                           │  Interface  │
-                                           └──────┬──────┘
-                                                  │
-                                           ┌──────▼──────┐
-                                           │  Fixtures   │
-                                           └─────────────┘
+```bash
+# Install the package
+uv pip install git+https://github.com/joshlebed/qlc-config.git
+
+# Set the QLC+ host
+export QLCPLUS_HOST=192.168.0.221
+
+# Control the light
+qlc red      # Turn light red
+qlc white    # Turn light white
+qlc off      # Turn light off
 ```
 
-## Hardware
+## Overview
+
+This repository contains:
+
+| Path | Description |
+|------|-------------|
+| `qlcplus/` | Python package for WebSocket API control |
+| `spotlight.qxw` | QLC+ project file (scenes, fixtures, virtual console) |
+| `ws_control.py` | CLI tool for controlling lights |
+| `osc_control.py` | Legacy OSC control script |
+| `qlcplus.service` | Systemd service for headless operation |
+
+## Architecture
+
+```
+┌─────────────────────┐     WebSocket (9999)     ┌─────────────────┐
+│  Keypad Service     │ ────────────────────────▶│  QLC+           │
+│  (other server)     │                          │  192.168.0.221  │
+└─────────────────────┘                          └────────┬────────┘
+                                                          │ DMX512
+┌─────────────────────┐     WebSocket (9999)              ▼
+│  ws_control.py      │ ────────────────────────▶ ┌───────────────┐
+│  (this server)      │                           │ USB-DMX       │
+└─────────────────────┘                           │ Interface     │
+                                                  └───────┬───────┘
+                                                          │
+                                                  ┌───────▼───────┐
+                                                  │ ADJ Pinspot   │
+                                                  │ LED Quad DMX  │
+                                                  └───────────────┘
+```
+
+## Python Package Usage
+
+### Installation
+
+```bash
+# Using uv (recommended)
+uv pip install git+https://github.com/joshlebed/qlc-config.git
+
+# Using pip
+pip install git+https://github.com/joshlebed/qlc-config.git
+
+# For development
+git clone https://github.com/joshlebed/qlc-config.git
+cd qlc-config
+uv sync --dev
+```
+
+### API Reference
+
+```python
+from qlcplus import QLCPlusClient
+
+# Connect with context manager (auto-disconnects)
+with QLCPlusClient(host="192.168.0.221") as client:
+    # Start a function by ID
+    client.start_function(2)  # mode_red
+
+    # Stop a function by ID
+    client.stop_function(2)
+
+    # Get function status
+    status = client.get_function_status(2)  # "Running" or "Stopped"
+
+    # List all functions
+    functions = client.get_functions_list()
+    # {0: "mode_off", 1: "mode_white", 2: "mode_red", 3: "mode_yellow"}
+
+    # Direct DMX channel control
+    client.set_channel(universe=1, channel=1, value=255)
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QLCPLUS_HOST` | `192.168.0.221` | QLC+ server IP address |
+| `QLCPLUS_WS_PORT` | `9999` | WebSocket port |
+
+### Function IDs
+
+These IDs are defined in `spotlight.qxw` and correspond to QLC+ Scene functions:
+
+| ID | Name | Description |
+|----|------|-------------|
+| 0 | `mode_off` | All DMX channels to 0 |
+| 1 | `mode_white` | RGBW all at 100%, dimmer 100% |
+| 2 | `mode_red` | Red 100%, dimmer 100% |
+| 3 | `mode_yellow` | Red + Green 100%, dimmer 100% |
+
+### Mutual Exclusion Pattern
+
+Scenes must be manually exclusive. When setting a mode, stop others first:
+
+```python
+MODES = {"off": 0, "white": 1, "red": 2, "yellow": 3}
+
+def set_mode(mode: str) -> None:
+    with QLCPlusClient() as client:
+        # Stop all other modes
+        for name, func_id in MODES.items():
+            if name != mode:
+                client.stop_function(func_id)
+        # Start target mode
+        client.start_function(MODES[mode])
+```
+
+## Hardware Configuration
+
+### QLC+ Server
+
+- **Host**: `192.168.0.221`
+- **WebSocket Port**: `9999`
+- **OSC Port**: `7701` (legacy)
 
 ### USB-DMX Interface
-- **Type**: FTDI FT232R USB UART (ProX or similar)
-- **Vendor ID**: 0403
-- **Product ID**: 6001
-- **Serial**: A402PX50
+
+- **Type**: FTDI FT232R USB UART
+- **Vendor ID**: `0403`
+- **Product ID**: `6001`
+- **Serial**: `A402PX50`
 - **Device**: `/dev/ttyUSB0`
 
-### Fixtures
-<!-- Document your fixtures here -->
-- TBD: Add fixture details after GUI configuration
+### Fixture: ADJ Pinspot LED Quad DMX
 
-## Server Setup (Fresh Install)
+- **DMX Mode**: 6 Channel
+- **DMX Address**: 1
+- **Channels**:
+  | Channel | Function | Range |
+  |---------|----------|-------|
+  | 1 | Red | 0-255 |
+  | 2 | Green | 0-255 |
+  | 3 | Blue | 0-255 |
+  | 4 | White | 0-255 |
+  | 5 | Dimmer | 0-255 |
+  | 6 | Strobe | 0-255 |
 
-### 1. Install packages
+## Server Setup
+
+### Prerequisites
 
 ```bash
 sudo apt update
-sudo apt install -y qlcplus xvfb python3-pip
-pip3 install python-osc --break-system-packages
+sudo apt install -y qlcplus xvfb
 ```
 
-### 2. Add user to dialout group (for USB-DMX access)
+### Install Python Package
 
 ```bash
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and install
+git clone https://github.com/joshlebed/qlc-config.git
+cd qlc-config
+uv sync
+```
+
+### USB-DMX Permissions
+
+```bash
+# Add user to dialout group
 sudo usermod -a -G dialout $USER
-# Log out and back in, or reboot
-```
 
-### 3. Create directory structure
-
-```bash
-sudo mkdir -p /opt/qlcplus/projects
-sudo chown -R $USER:$USER /opt/qlcplus
-```
-
-### 4. Install systemd service
-
-```bash
-sudo cp /home/joshlebed/code/qlc-config/qlcplus.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable qlcplus
-```
-
-### 5. Symlink project file
-
-The QLC+ project file lives in this repo and is symlinked to where QLC+ expects it:
-
-```bash
-ln -sf /home/joshlebed/code/qlc-config/spotlight.qxw /opt/qlcplus/projects/spotlight.qxw
-```
-
-This way, changes saved in QLC+ are automatically in the repo—no copying needed.
-
-### 6. Start service
-
-```bash
-sudo systemctl start qlcplus
-journalctl -u qlcplus -f  # verify it's running
-```
-
-## File Locations
-
-| File | Location | Purpose |
-|------|----------|---------|
-| QLC+ project (actual) | `/home/joshlebed/code/qlc-config/spotlight.qxw` | Version-controlled project file |
-| QLC+ project (symlink) | `/opt/qlcplus/projects/spotlight.qxw` | Symlink to repo file |
-| Systemd service (actual) | `/home/joshlebed/code/qlc-config/qlcplus.service` | Version-controlled service file |
-| Systemd service (installed) | `/etc/systemd/system/qlcplus.service` | Installed copy |
-| OSC control script | `/home/joshlebed/code/qlc-config/osc_control.py` | Python CLI for OSC commands |
-
-## OSC Control
-
-QLC+ listens for OSC on **UDP port 7700** by default.
-
-### Command Line Usage
-
-```bash
-# Use the control script
-python3 /opt/qlcplus/osc_control.py off
-python3 /opt/qlcplus/osc_control.py audio
-python3 /opt/qlcplus/osc_control.py solid
-python3 /opt/qlcplus/osc_control.py manual
-
-# Or send custom OSC addresses
-python3 /opt/qlcplus/osc_control.py /custom/address 0.5
-```
-
-### Python Integration
-
-```python
-from pythonosc import udp_client
-
-client = udp_client.SimpleUDPClient("127.0.0.1", 7700)
-client.send_message("/lights/mode/off", 1)
-client.send_message("/lights/mode/audio", 1)
-```
-
-### OSC Address Conventions
-
-| Address | Function |
-|---------|----------|
-| `/lights/mode/off` | All lights off |
-| `/lights/mode/audio` | Audio-reactive mode |
-| `/lights/mode/solid` | Static color mode |
-| `/lights/mode/manual` | Manual DMX control |
-
-## GUI Configuration (One-Time Setup)
-
-QLC+ requires a GUI session to create/edit the lighting project. After initial setup, it runs headless.
-
-### Option A: X11 Forwarding from macOS (Recommended)
-
-#### On the Mac (one-time setup):
-
-1. Install XQuartz:
-   ```bash
-   brew install --cask xquartz
-   ```
-   Or download from https://www.xquartz.org/
-
-2. Log out and back in (or reboot) after installing
-
-3. Launch XQuartz from Applications
-
-4. Configure XQuartz:
-   - **XQuartz → Settings → Security**
-   - Check: **"Allow connections from network clients"**
-
-5. Add to `~/.ssh/config` on your Mac:
-   ```
-   Host mediaserver
-       HostName <server-ip-or-hostname>
-       User joshlebed
-       ForwardX11 yes
-       ForwardX11Trusted yes
-   ```
-
-#### Connect and run:
-
-```bash
-ssh mediaserver   # or: ssh -Y joshlebed@<server-ip>
-qlcplus
-```
-
-**Important:** You must start a fresh SSH session with X11 forwarding. Existing terminal sessions (e.g., where you're running other tools) won't have `DISPLAY` set and QLC+ will fail with "could not connect to display".
-
-#### Verify X11 is working:
-```bash
-echo $DISPLAY     # Should show "localhost:10.0" or similar
-xeyes             # Should open a window with eyes on your Mac
-```
-
-#### Troubleshooting X11:
-- If `DISPLAY` is empty, you didn't SSH with `-X` or `-Y`, or XQuartz isn't running
-- If you get "Authorization required", enable "Allow connections from network clients" in XQuartz settings
-- If it's slow, use `-Y` (trusted) instead of `-X`, or add `-C` for compression
-
-### Option B: Direct Display
-
-Plug in a monitor and keyboard to the server temporarily.
-
-### Option C: VNC/NoMachine
-
-Use remote desktop software.
-
-### What to Configure in GUI
-
-1. **Add Fixtures**
-   - Match DMX mode exactly to your hardware
-   - Set starting DMX address (typically 1)
-
-2. **Create Functions**
-   - `mode_off` - Scene with all channels at 0
-   - `mode_audio` - Audio trigger configuration
-   - `mode_solid` - Static color scene
-   - `mode_manual` - Collection for manual control
-
-3. **Virtual Console**
-   - Create buttons for each mode
-   - Set buttons to Toggle, Exclusive Group
-   - Bind OSC addresses to each button
-
-4. **Audio Setup**
-   - Select audio input device
-   - Configure audio trigger spectrum bands
-   - Map to fixture channels
-
-5. **Save Project**
-   - Save to `/opt/qlcplus/projects/spotlight.qxw`
-   - This is a symlink to the repo, so changes are automatically version-controlled
-   - Just `git commit` after saving
-
-## Service Management
-
-```bash
-# Start/stop/restart
-sudo systemctl start qlcplus
-sudo systemctl stop qlcplus
-sudo systemctl restart qlcplus
-
-# Check status
-sudo systemctl status qlcplus
-
-# View logs
-journalctl -u qlcplus -f
-
-# Enable/disable on boot
-sudo systemctl enable qlcplus
-sudo systemctl disable qlcplus
-```
-
-## Troubleshooting
-
-### QLC+ won't start
-
-Check if xvfb is working:
-```bash
-xvfb-run qlcplus --version
-```
-
-### No DMX output
-
-1. Verify USB device is present:
-   ```bash
-   ls /dev/ttyUSB*
-   ```
-
-2. Check user is in dialout group:
-   ```bash
-   groups | grep dialout
-   ```
-
-3. Check QLC+ output patch (requires GUI)
-
-### OSC commands not working
-
-1. Verify QLC+ is running:
-   ```bash
-   sudo systemctl status qlcplus
-   ```
-
-2. Check OSC is enabled in QLC+ input/output configuration
-
-3. Test with netcat:
-   ```bash
-   echo -n "/lights/mode/off" | nc -u 127.0.0.1 7700
-   ```
-
-### USB device not detected after reboot
-
-Create a udev rule for consistent naming:
-```bash
+# Create udev rule for consistent device naming
 sudo tee /etc/udev/rules.d/99-usb-dmx.rules << 'EOF'
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="dmx0"
 EOF
 sudo udevadm control --reload-rules
+
+# Log out and back in for group changes
 ```
 
-## Backup and Version Control
-
-The project file is symlinked from the repo, so no copying is needed.
-
-### After modifying the project in QLC+ GUI:
+### Systemd Service
 
 ```bash
-cd /home/joshlebed/code/qlc-config
-git add spotlight.qxw
-git commit -m "Update lighting project"
-git push
-```
+# Copy service file
+sudo cp qlcplus.service /etc/systemd/system/
 
-### Restoring from git history:
-
-```bash
-cd /home/joshlebed/code/qlc-config
-git checkout <commit-hash> -- spotlight.qxw
-sudo systemctl restart qlcplus
-```
-
-### Setting up on a new machine:
-
-```bash
-# Clone the repo
-git clone <repo-url> /home/joshlebed/code/qlc-config
-
-# Follow "Server Setup (Fresh Install)" steps 1-4, then:
-ln -sf /home/joshlebed/code/qlc-config/spotlight.qxw /opt/qlcplus/projects/spotlight.qxw
-
-# Start service
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable qlcplus
 sudo systemctl start qlcplus
+
+# Check status
+sudo systemctl status qlcplus
+journalctl -u qlcplus -f
 ```
 
-## TODO
+### Symlink Project File
 
-- [ ] Complete GUI configuration session
-- [ ] Document actual fixtures and DMX addresses
-- [ ] Configure audio input
-- [ ] Test OSC integration
-- [ ] Set up Home Assistant integration (optional)
+```bash
+sudo mkdir -p /opt/qlcplus/projects
+ln -sf $(pwd)/spotlight.qxw /opt/qlcplus/projects/spotlight.qxw
+```
+
+## GUI Configuration
+
+QLC+ requires a GUI session for initial setup. After configuration, it runs headless.
+
+### X11 Forwarding (from macOS)
+
+```bash
+# On Mac: Install XQuartz
+brew install --cask xquartz
+
+# SSH with X11 forwarding
+ssh -Y user@192.168.0.221
+
+# Run QLC+ with web access
+qlcplus -w -o /opt/qlcplus/projects/spotlight.qxw
+```
+
+### Key GUI Steps
+
+1. **Inputs/Outputs**: Enable DMX USB output on Universe 1
+2. **Fixtures**: Add ADJ Pinspot LED Quad DMX at address 1
+3. **Functions**: Create scenes (mode_off, mode_red, etc.)
+4. **Virtual Console**: Create buttons in Solo Frame (optional for OSC)
+5. **Save**: Save to `/opt/qlcplus/projects/spotlight.qxw`
+
+## Integration Options
+
+### Option A: Install from Git (Recommended)
+
+Best for services that need the `qlcplus` package as a dependency.
+
+```bash
+# In your other project's pyproject.toml
+dependencies = [
+    "qlcplus @ git+https://github.com/joshlebed/qlc-config.git",
+]
+
+# Or install directly
+uv pip install git+https://github.com/joshlebed/qlc-config.git
+```
+
+### Option B: Git Submodule
+
+Best if you need to modify the package or want version pinning.
+
+```bash
+# In your other project
+git submodule add https://github.com/joshlebed/qlc-config.git libs/qlc-config
+
+# Install in editable mode
+uv pip install -e libs/qlc-config
+```
+
+### Option C: Copy Package Only
+
+Minimal approach for simple integrations.
+
+```bash
+# Copy just the package
+cp -r qlcplus/ /path/to/your/project/
+
+# Add websocket-client to your dependencies
+uv pip install websocket-client
+```
+
+## Development
+
+```bash
+# Clone and setup
+git clone https://github.com/joshlebed/qlc-config.git
+cd qlc-config
+uv sync --dev
+
+# Run linter
+uv run ruff check .
+uv run ruff format .
+
+# Run type checker
+uv run mypy qlcplus/
+
+# Run tests
+uv run pytest
+```
+
+## Troubleshooting
+
+### WebSocket Connection Failed
+
+```bash
+# Check QLC+ is running with web access
+ps aux | grep qlcplus
+# Should show: qlcplus -w ...
+
+# Check port is listening
+ss -tln | grep 9999
+
+# Test connection
+curl -s http://192.168.0.221:9999/
+```
+
+### No DMX Output
+
+```bash
+# Check USB device
+ls -la /dev/ttyUSB*
+
+# Check permissions
+groups | grep dialout
+
+# Check QLC+ output patch in GUI
+```
+
+### Function Not Starting
+
+```bash
+# List functions to verify IDs
+uv run python ws_control.py --list
+
+# Check function status
+uv run python ws_control.py --status
+```
+
+## File Reference
+
+| File | Purpose |
+|------|---------|
+| `qlcplus/__init__.py` | Package exports (`QLCPlusClient`, `QLCPlusError`) |
+| `qlcplus/client.py` | WebSocket client implementation |
+| `qlcplus/py.typed` | PEP 561 marker for type checking |
+| `ws_control.py` | CLI tool using WebSocket API |
+| `osc_control.py` | Legacy OSC control (kept for compatibility) |
+| `spotlight.qxw` | QLC+ project file (XML) |
+| `qlcplus.service` | Systemd unit file for headless operation |
+| `pyproject.toml` | Package metadata and tool configuration |
+| `uv.lock` | Locked dependencies for reproducible installs |
+
+## License
+
+MIT
