@@ -222,6 +222,11 @@ Use the helper script for easy management:
 - Auto-restarts on crash (max 3 times per minute)
 - Logs to journald
 
+**Important systemd notes:**
+- Do NOT use `ProtectSystem=strict` or `ProtectHome=read-only` - they break QLC+'s web server initialization
+- The service uses `RuntimeDirectory=qlcplus` to provide a writable XDG_RUNTIME_DIR
+- `StartLimitIntervalSec` and `StartLimitBurst` must be in the `[Unit]` section, not `[Service]`
+
 **Manual systemd commands:**
 ```bash
 sudo systemctl start qlcplus    # Start
@@ -329,6 +334,18 @@ ss -tln | grep 9999
 
 # Test connection
 curl -s http://192.168.0.221:9999/
+```
+
+**After service restart**: The WebSocket server takes ~3 seconds to initialize. If you get "Connection refused" immediately after `make restart`, wait and retry.
+
+### Project File Changes Not Taking Effect
+
+QLC+ loads the project file at startup. After editing `spotlight.qxw`:
+
+```bash
+make restart  # Reload the project file
+sleep 3       # Wait for WebSocket to initialize
+make list     # Verify changes
 ```
 
 ### No DMX Output
