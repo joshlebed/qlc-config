@@ -349,6 +349,7 @@ uv run python ws_control.py --status
 | `qlcplus.service` | Systemd unit file for headless operation |
 | `pyproject.toml` | Package metadata and tool configuration |
 | `uv.lock` | Locked dependencies for reproducible installs |
+| `INTEGRATION.md` | Guide for integrating into other services |
 
 ## License
 
