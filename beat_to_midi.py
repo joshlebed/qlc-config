@@ -34,7 +34,6 @@ from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import rtmidi
@@ -175,9 +174,11 @@ class PhaseLockLoop:
             # Only update if significantly different (reduces oscillation)
             if self.bpm <= 0:
                 self.bpm = new_bpm
-            elif abs(new_bpm - self.bpm) / self.bpm > 0.01:  # >1% change
-                # Blend old and new (80% old, 20% new for stability)
-                self.bpm = self.bpm * 0.8 + new_bpm * 0.2
+            elif abs(new_bpm - self.bpm) / self.bpm > 0.005:  # >0.5% change
+                # Adaptive blending: more intervals = more confidence
+                # With 16 intervals (full buffer), use 30% new; with 3, use 10%
+                blend = min(0.30, 0.05 + 0.015 * len(valid))
+                self.bpm = self.bpm * (1 - blend) + new_bpm * blend
 
     def apply_drift_correction(self) -> None:
         """Correct tempo based on accumulated phase drift."""
@@ -187,11 +188,18 @@ class PhaseLockLoop:
         errors = list(self.phase_errors)
         mean_error = np.mean(errors)
 
-        # Only correct if errors are consistently biased (same direction)
-        if all(e > 0.002 for e in errors) or all(e < -0.002 for e in errors):
-            # Very gentle correction: 0.3% of mean error per cycle
-            correction = mean_error / self.beat_period() * 0.03
-            correction = np.clip(correction, -0.005, 0.005)  # Max 0.5% per cycle
+        # Count how many errors are biased positive vs negative
+        pos_count = sum(1 for e in errors if e > 0.003)
+        neg_count = sum(1 for e in errors if e < -0.003)
+
+        # Only correct if at least 75% of errors are biased same direction
+        min_biased = int(len(errors) * 0.75)
+        if pos_count >= min_biased or neg_count >= min_biased:
+            # Correction proportional to mean error
+            # If mean_error = 0.02s (20ms late), that's 5% of a 400ms beat period
+            # Apply 10% of that drift as correction = 0.5% BPM adjustment
+            correction = mean_error / self.beat_period() * 0.10
+            correction = np.clip(correction, -0.01, 0.01)  # Max 1% per cycle
             self.bpm *= (1 - correction)
             self.bpm = np.clip(self.bpm, MIN_BPM, MAX_BPM)
 
@@ -280,6 +288,7 @@ class PhaseLockLoop:
                     self.state = LockState.LOCKED
                     self.clock_accumulator = 0.0
                     self.phase_errors.clear()
+                    self.tempo_change_count = 0  # Reset on lock
                 return True
             else:
                 # Invalid beat - too far from expected and invalid interval
@@ -299,8 +308,8 @@ class PhaseLockLoop:
 
             self._last_debug = f"err={error:.3f}s tol={tolerance:.3f}s int={interval:.3f}s ibpm={instant_bpm:.1f}"
 
-            # Check for tempo change
-            if instant_bpm > 0 and self.bpm > 0:
+            # Check for tempo change - ONLY for valid intervals (not spurious detections)
+            if valid_interval and instant_bpm > 0 and self.bpm > 0:
                 bpm_diff = abs(instant_bpm - self.bpm) / self.bpm
                 if bpm_diff > TEMPO_CHANGE_THRESHOLD:
                     self.tempo_change_count += 1
@@ -566,7 +575,7 @@ class BeatToMidi:
 
         # Check for timeout (no beats detected for a while)
         if self.pll.check_timeout():
-            print(f"\n>>> TIMEOUT - no beats detected <<<\n")
+            print("\n>>> TIMEOUT - no beats detected <<<\n")
             if not self.note_mode:
                 self.midi.send_stop()
 
@@ -577,7 +586,7 @@ class BeatToMidi:
                 if not self.note_mode:
                     self.midi.send_start()
             elif self.last_state == LockState.LOCKED:
-                print(f"\n>>> LOST LOCK <<<\n")
+                print("\n>>> LOST LOCK <<<\n")
                 if not self.note_mode:
                     self.midi.send_stop()
             self.last_state = self.pll.state

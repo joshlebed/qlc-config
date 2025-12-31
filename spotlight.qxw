@@ -17,7 +17,7 @@
     <Input Plugin="OSC" UID="192.168.0.221" Line="3" Profile="Custom OSC Spotlight"/>
    </Universe>
    <Universe Name="Universe 3 - MIDI" ID="2">
-    <Input Plugin="MIDI" UID="BeatClock" Line="3"/>
+    <Input Plugin="MIDI" UID="Midi Through Port-0" Line="0"/>
    </Universe>
    <Universe Name="Universe 4" ID="3"/>
   </InputOutputMap>
@@ -91,11 +91,11 @@
   </Function>
   <Function ID="12" Type="Scene" Name="show_punch">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
-   <FixtureVal ID="0">0,255,1,255,2,140,3,255,4,255,5,0</FixtureVal>
+   <FixtureVal ID="0">0,255,1,0,2,0,3,255,4,255,5,0</FixtureVal>
   </Function>
   <Function ID="13" Type="Scene" Name="show_flash">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
-   <FixtureVal ID="0">0,20,1,20,2,255,3,255,4,255,5,0</FixtureVal>
+   <FixtureVal ID="0">0,20,1,20,2,255,3,0,4,255,5,0</FixtureVal>
   </Function>
   <Function ID="14" Type="Chaser" Name="mode_reactive_show">
    <Speed FadeIn="0" FadeOut="0" Duration="100"/>
@@ -190,19 +190,8 @@
      <Input Universe="1" Channel="13411"/>
     </Button>
    </SoloFrame>
-   <AudioTriggers BarsNumber="8" Caption="audio_trigger" ID="5">
-    <WindowState Visible="False" X="165" Y="470" Width="300" Height="200"/>
-    <Appearance>
-     <FrameStyle>Sunken</FrameStyle>
-     <ForegroundColor>Default</ForegroundColor>
-     <BackgroundColor>Default</BackgroundColor>
-     <BackgroundImage>None</BackgroundImage>
-     <Font>Default</Font>
-    </Appearance>
-    <SpectrumBar Name="#1 (0Hz - 625Hz)" Type="3" MinThreshold="76" MaxThreshold="178" Divisor="2" Index="0" WidgetID="6"/>
-   </AudioTriggers>
    <CueList Caption="Cue list" ID="6">
-    <WindowState Visible="False" X="525" Y="275" Width="300" Height="220"/>
+    <WindowState Visible="False" X="545" Y="65" Width="330" Height="245"/>
     <Appearance>
      <FrameStyle>Sunken</FrameStyle>
      <ForegroundColor>Default</ForegroundColor>
@@ -211,9 +200,9 @@
      <Font>Default</Font>
     </Appearance>
     <Chaser>14</Chaser>
-    <NextPrevBehavior>0</NextPrevBehavior>
+    <NextPrevBehavior>3</NextPrevBehavior>
     <Next>
-     <Input Universe="2" Channel="36"/>
+     <Input Universe="2" Channel="164"/>
     </Next>
     <Previous/>
     <Playback>

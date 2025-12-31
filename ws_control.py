@@ -10,59 +10,23 @@ Modes are idempotent - sending the same mode twice keeps the light in that state
 Usage:
     python3 ws_control.py off
     python3 ws_control.py red
-    python3 ws_control.py yellow
-    python3 ws_control.py white
-    python3 ws_control.py --list        # List all functions
-    python3 ws_control.py --status      # Show running functions
+    python3 ws_control.py reactive    # Beat-reactive mode
+    python3 ws_control.py --list      # List all functions
+    python3 ws_control.py --status    # Show running functions
 """
 
 import sys
 
-from qlcplus import QLCPlusClient
-
-# Function IDs from spotlight.qxw
-MODES = {
-    "off": 0,  # mode_off (Scene)
-    "white": 1,  # mode_white (Scene)
-    "red": 2,  # mode_red (Scene)
-    "yellow": 3,  # mode_yellow (Scene)
-    "fade": 4,  # mode_fade (Chaser: rainbow loop)
-    "orange": 5,  # mode_orange (Scene)
-    "green": 6,  # mode_green (Scene)
-    "cyan": 7,  # mode_cyan (Scene)
-    "blue": 8,  # mode_blue (Scene)
-    "purple": 9,  # mode_purple (Scene)
-    "pink": 10,  # mode_pink (Scene)
-    "reactive": 14,  # mode_reactive_show (Chaser: beat-triggered via MIDI)
-}
+from qlcplus import MODES, QLCPlusClient
+from qlcplus import set_mode as _set_mode
 
 
 def set_mode(mode: str) -> bool:
-    """
-    Set the spotlight to a specific mode.
-
-    This is idempotent - calling set_mode("red") twice keeps the light red.
-    Handles mutual exclusion by stopping other modes first.
-
-    Args:
-        mode: One of "off", "red", "yellow", "white"
-
-    Returns:
-        True if successful, False if mode is unknown
-    """
-    if mode not in MODES:
-        return False
-
-    with QLCPlusClient() as client:
-        # Stop all other modes first
-        for other_mode, func_id in MODES.items():
-            if other_mode != mode:
-                client.stop_function(func_id)
-
-        # Start the target mode
-        client.start_function(MODES[mode])
+    """Set mode and print confirmation."""
+    if _set_mode(mode):
         print(f"Set mode: {mode}")
         return True
+    return False
 
 
 def list_functions():
@@ -84,9 +48,11 @@ def show_status():
 
 
 def main():
+    all_modes = [*MODES.keys(), "reactive"]
+
     if len(sys.argv) < 2:
         print(__doc__)
-        print("\nAvailable modes:", ", ".join(MODES.keys()))
+        print("\nAvailable modes:", ", ".join(all_modes))
         sys.exit(1)
 
     command = sys.argv[1].lower()
@@ -95,11 +61,11 @@ def main():
         list_functions()
     elif command == "--status":
         show_status()
-    elif command in MODES:
+    elif command in all_modes:
         set_mode(command)
     else:
         print(f"Unknown command: {command}")
-        print("Available modes:", ", ".join(MODES.keys()))
+        print("Available modes:", ", ".join(all_modes))
         print("Options: --list, --status")
         sys.exit(1)
 

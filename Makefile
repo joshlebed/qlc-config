@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs gui test lint format check sync clean audio audio-pulse audio-color beat beat-debug beat-filter beat-note beat-devices beat-file midi-connect reactive reactive-start
+.PHONY: help install start stop restart status logs gui test lint format check sync clean audio audio-pulse audio-color beat beat-debug beat-filter beat-note beat-devices beat-file midi-connect reactive reactive-manual beat-service-install beat-service-start beat-service-stop beat-service-status
 
 # Default target
 help:
@@ -27,6 +27,7 @@ help:
 	@echo "  make white      - Set light to white"
 	@echo "  make off        - Turn light off"
 	@echo "  make fade       - Start rainbow fade"
+	@echo "  make reactive   - Start beat-reactive mode"
 	@echo "  make list       - List all QLC+ functions"
 	@echo ""
 	@echo "Beat Detection (with PLL stabilization):"
@@ -37,10 +38,13 @@ help:
 	@echo "  make beat-devices - List audio input devices"
 	@echo "  make beat-file FILE=test.wav - Test with audio file"
 	@echo ""
-	@echo "Beat-Reactive Lighting:"
-	@echo "  make reactive       - Full beat-reactive show (MIDI->QLC+ Cue List)"
-	@echo "  make reactive-start - Start reactive chaser (no beat detection)"
-	@echo "  make midi-connect   - Connect BeatClock MIDI to QLC+"
+	@echo "Beat-Reactive Lighting (requires beat service running):"
+	@echo "  make beat-service-install  - Install beat detection as systemd service"
+	@echo "  make beat-service-start    - Start beat detection service"
+	@echo "  make beat-service-stop     - Stop beat detection service"
+	@echo "  make beat-service-status   - Check beat detection service status"
+	@echo "  make midi-connect          - Connect BeatClock MIDI to Midi Through"
+	@echo "  make reactive-manual       - Full manual workflow (no service)"
 	@echo ""
 	@echo "Audio Reactive (legacy):"
 	@echo "  make audio      - Direct DMX control (intensity mode)"
@@ -83,11 +87,11 @@ test:
 	uv run pytest
 
 lint:
-	uv run ruff check qlcplus/ ws_control.py audio_reactive.py
+	uv run ruff check qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
 
 format:
-	uv run ruff format qlcplus/ ws_control.py audio_reactive.py
-	uv run ruff check --fix qlcplus/ ws_control.py audio_reactive.py
+	uv run ruff format qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
+	uv run ruff check --fix qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
 
 check: lint
 	uv run mypy qlcplus/
@@ -128,6 +132,9 @@ off:
 
 fade:
 	@uv run python ws_control.py fade
+
+reactive:
+	@uv run python ws_control.py reactive
 
 list:
 	@uv run python ws_control.py --list
@@ -171,40 +178,50 @@ beat-file:
 # Beat-Reactive Lighting Integration
 # =============================================================================
 
-# Connect BeatClock virtual MIDI port to QLC+ MIDI input
+# Connect BeatClock virtual MIDI port to Midi Through (stable bridge to QLC+)
 midi-connect:
-	@echo "Connecting BeatClock MIDI to QLC+..."
-	@aconnect -x 2>/dev/null || true
-	@sleep 0.5
+	@echo "Connecting BeatClock MIDI to Midi Through..."
 	@BEATCLOCK=$$(aconnect -l | grep -B1 "BeatClock" | head -1 | sed 's/client \([0-9]*\):.*/\1/'); \
-	QLC=$$(aconnect -l | grep -B1 "__QLC__" | head -1 | sed 's/client \([0-9]*\):.*/\1/'); \
-	if [ -n "$$BEATCLOCK" ] && [ -n "$$QLC" ]; then \
-		aconnect $$BEATCLOCK:0 $$QLC:0 && echo "Connected: BeatClock ($$BEATCLOCK) -> QLC+ ($$QLC)"; \
+	if [ -n "$$BEATCLOCK" ]; then \
+		aconnect $$BEATCLOCK:0 14:0 2>/dev/null && echo "Connected: BeatClock ($$BEATCLOCK) -> Midi Through (14)"; \
 	else \
-		echo "Error: Could not find BeatClock or QLC+ MIDI ports"; \
-		echo "Make sure beat_to_midi.py is running (--note-mode) and QLC+ is started"; \
-		aconnect -l; \
+		echo "Error: BeatClock not found. Start beat_to_midi.py with --note-mode first"; \
 		exit 1; \
 	fi
 
-# Start only the reactive show chaser (for manual testing or external MIDI)
-reactive-start:
+# Full manual workflow (without using beat-midi service)
+reactive-manual:
+	@echo "Starting beat-reactive lighting (manual mode)..."
 	@uv run python ws_control.py reactive
+	@echo "Starting beat detection..."
+	@uv run python beat_to_midi.py --device 5 --no-filter --note-mode &
+	@BEAT_PID=$$!; \
+	for i in 1 2 3 4 5; do sleep 0.5; aconnect -l | grep -q "BeatClock" && break; done; \
+	$(MAKE) midi-connect; \
+	echo "Beat detection running (Ctrl+C to stop)..."; \
+	wait $$BEAT_PID
 
-# Full beat-reactive workflow:
-# 1. Start reactive chaser in QLC+
-# 2. Run beat detection with note mode
-# Note: MIDI auto-connects because QLC+ sees the virtual port
-reactive:
-	@echo "Starting beat-reactive lighting show..."
-	@echo "Pattern: FLASH -> base -> PUNCH -> base (4-beat loop)"
-	@echo ""
-	@uv run python ws_control.py reactive
-	@sleep 1
-	@$(MAKE) midi-connect 2>/dev/null || true
-	@echo ""
-	@echo "Starting beat detection (Ctrl+C to stop)..."
-	@uv run python beat_to_midi.py --device 5 --no-filter --note-mode
+# =============================================================================
+# Beat Detection Service (for always-on operation)
+# =============================================================================
+
+beat-service-install:
+	@echo "Installing beat-midi service..."
+	@sudo cp beat-midi.service /etc/systemd/system/
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable beat-midi
+	@echo "Installed. Start with: make beat-service-start"
+
+beat-service-start:
+	@sudo systemctl start beat-midi
+	@sleep 2
+	@sudo systemctl status beat-midi --no-pager | head -10
+
+beat-service-stop:
+	@sudo systemctl stop beat-midi
+
+beat-service-status:
+	@sudo systemctl status beat-midi --no-pager
 
 # =============================================================================
 # Cleanup

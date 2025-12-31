@@ -240,3 +240,62 @@ class QLCPlusClient:
             value: Value to set (0-255 for buttons/sliders)
         """
         self._ws.send(f"{widget_id}|{value}")
+
+    def get_widget_status(self, widget_id: int) -> str:
+        """
+        Get the status of a Virtual Console widget.
+
+        Args:
+            widget_id: The widget ID
+
+        Returns:
+            Status string (e.g., "PLAY(Step: 2)" for Cue Lists)
+        """
+        response = self._send(f"getWidgetStatus|{widget_id}")
+        parts = response.split("|")
+        return parts[-1] if parts else "Unknown"
+
+    # -------------------------------------------------------------------------
+    # Cue List Control
+    # -------------------------------------------------------------------------
+
+    def cuelist_play(self, widget_id: int) -> None:
+        """
+        Toggle play/stop on a Cue List widget.
+        If playing, this stops it. If stopped, this starts it.
+
+        Args:
+            widget_id: The Cue List widget ID
+        """
+        self._ws.send(f"{widget_id}|PLAY")
+
+    def cuelist_stop(self, widget_id: int) -> None:
+        """
+        Stop a Cue List widget if it's playing.
+
+        Args:
+            widget_id: The Cue List widget ID
+        """
+        # Check if playing, then toggle to stop
+        status = self.get_widget_status(widget_id)
+        if "PLAY" in status:
+            self._ws.send(f"{widget_id}|PLAY")  # Toggle to stop
+
+    def cuelist_next(self, widget_id: int) -> None:
+        """
+        Advance to next step in a Cue List.
+
+        Args:
+            widget_id: The Cue List widget ID
+        """
+        self._ws.send(f"{widget_id}|NEXT")
+
+    def cuelist_step(self, widget_id: int, step: int) -> None:
+        """
+        Jump to a specific step in a Cue List.
+
+        Args:
+            widget_id: The Cue List widget ID
+            step: Step index (0-based)
+        """
+        self._ws.send(f"{widget_id}|STEP|{step}")

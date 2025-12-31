@@ -26,8 +26,12 @@ This repository contains:
 | `qlcplus/` | Python package for WebSocket API control |
 | `spotlight.qxw` | QLC+ project file (scenes, fixtures, virtual console) |
 | `ws_control.py` | CLI tool for controlling lights |
+| `beat_to_midi.py` | Beat detection with PLL for MIDI clock/notes |
+| `audio_reactive.py` | Legacy direct DMX audio reactive control |
 | `osc_control.py` | Legacy OSC control script |
 | `qlcplus.service` | Systemd service for headless operation |
+
+See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the beat detection system.
 
 ## Architecture
 
@@ -428,6 +432,8 @@ Example in project file:
 | `qlcplus/client.py` | WebSocket client implementation |
 | `qlcplus/py.typed` | PEP 561 marker for type checking |
 | `ws_control.py` | CLI tool using WebSocket API |
+| `beat_to_midi.py` | Beat detection to MIDI clock/notes (aubio + PLL) |
+| `audio_reactive.py` | Legacy direct DMX audio reactive control |
 | `osc_control.py` | Legacy OSC control (kept for compatibility) |
 | `spotlight.qxw` | QLC+ project file (XML) |
 | `qlcplus.service` | Systemd unit file for headless operation |
@@ -435,6 +441,7 @@ Example in project file:
 | `pyproject.toml` | Package metadata and tool configuration |
 | `uv.lock` | Locked dependencies for reproducible installs |
 | `INTEGRATION.md` | Guide for integrating into other services |
+| `BEAT_DETECTION.md` | Technical docs for beat detection system |
 
 ## License
 

@@ -1,0 +1,28 @@
+[Unit]
+Description=Beat Detection to MIDI Service
+Documentation=https://github.com/joshlebed/qlc-config
+After=sound.target qlcplus.service
+Wants=qlcplus.service
+
+[Service]
+Type=simple
+User=joshlebed
+Group=joshlebed
+WorkingDirectory=/home/joshlebed/code/qlc-config
+
+# Start beat detection in note mode
+ExecStart=/home/joshlebed/.local/bin/uv run python beat_to_midi.py --device 5 --no-filter --note-mode
+
+# Connect MIDI after startup (give it a moment to create the port)
+ExecStartPost=/bin/bash -c 'sleep 2 && for i in 1 2 3 4 5; do BEATCLOCK=$$(aconnect -l | grep -B1 "BeatClock" | head -1 | sed "s/client \\([0-9]*\\):.*/\\1/"); if [ -n "$$BEATCLOCK" ]; then aconnect $$BEATCLOCK:0 14:0 && echo "Connected BeatClock to Midi Through" && break; fi; sleep 1; done'
+
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=beat-midi
+
+[Install]
+WantedBy=multi-user.target
