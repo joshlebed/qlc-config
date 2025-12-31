@@ -1,4 +1,4 @@
-.PHONY: help install start stop restart status logs gui test lint format check sync clean audio audio-pulse audio-color beat beat-debug beat-filter beat-note beat-devices beat-file midi-connect reactive reactive-manual beat-service-install beat-service-start beat-service-stop beat-service-status
+.PHONY: help install start stop restart status logs gui test lint format check sync clean audio audio-pulse audio-color beat beat-debug beat-filter beat-note beat-devices beat-file midi-connect reactive reactive-manual beat-service-install beat-service-start beat-service-stop beat-service-status beat-service-logs
 
 # Default target
 help:
@@ -43,6 +43,7 @@ help:
 	@echo "  make beat-service-start    - Start beat detection service"
 	@echo "  make beat-service-stop     - Stop beat detection service"
 	@echo "  make beat-service-status   - Check beat detection service status"
+	@echo "  make beat-service-logs     - Tail beat detection logs"
 	@echo "  make midi-connect          - Connect BeatClock MIDI to Midi Through"
 	@echo "  make reactive-manual       - Full manual workflow (no service)"
 	@echo ""
@@ -222,6 +223,9 @@ beat-service-stop:
 
 beat-service-status:
 	@sudo systemctl status beat-midi --no-pager
+
+beat-service-logs:
+	@journalctl -u beat-midi -f
 
 # =============================================================================
 # Cleanup
