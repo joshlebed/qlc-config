@@ -24,12 +24,16 @@ This repository contains:
 | Path | Description |
 |------|-------------|
 | `qlcplus/` | Python package for WebSocket API control |
+| `plp_beat_service/` | **Current** PLP-based beat detection service |
+| `test_data/` | Ground-truth beat data from rekordbox (JSON + audio) |
+| `sample_data/` | Test audio files with known BPM (118-155 range) |
 | `spotlight.qxw` | QLC+ project file (scenes, fixtures, virtual console) |
 | `ws_control.py` | CLI tool for controlling lights |
-| `beat_to_midi.py` | Beat detection with PLL for MIDI clock/notes |
-| `audio_reactive.py` | Legacy direct DMX audio reactive control |
-| `osc_control.py` | Legacy OSC control script |
-| `qlcplus.service` | Systemd service for headless operation |
+| `qlcplus.service` | Systemd service for QLC+ headless operation |
+| `plp-beat.service` | Systemd service for beat detection |
+| `beat_to_midi.py` | **Deprecated** - use `plp_beat_service` instead |
+| `audio_reactive.py` | **Deprecated** - legacy direct DMX control |
+| `osc_control.py` | **Deprecated** - legacy OSC control |
 
 See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the beat detection system.
 
@@ -240,6 +244,44 @@ sudo systemctl status qlcplus   # Status
 journalctl -u qlcplus -f        # Live logs
 ```
 
+### Beat Detection Service (PLP)
+
+The PLP beat detection service runs as a separate systemd service, detecting beats from audio input and sending MIDI notes to QLC+.
+
+**Makefile commands (recommended):**
+```bash
+make beat-install    # One-time setup: install systemd service
+make beat-start      # Start beat detection
+make beat-stop       # Stop beat detection
+make beat-restart    # Restart beat detection
+make beat-status     # Check service status
+make beat-logs       # Tail live logs (Ctrl+C to exit)
+make beat-debug      # Show debug console URL
+```
+
+**Debug console:**
+
+The service includes a real-time browser-based visualization:
+- Open `http://192.168.0.221:8080/debug.html` in a browser
+- Shows onset envelope, PLP pulse curve, and confidence metrics
+- Displays current BPM, state (SEARCHING/LOCKED/HOLDOVER), and beat count
+
+**Manual testing:**
+```bash
+make plp             # Run manually with OSC output
+make plp-midi        # Run manually with MIDI note output
+make plp-devices     # List available audio devices
+```
+
+**Manual systemd commands:**
+```bash
+sudo systemctl start plp-beat    # Start
+sudo systemctl stop plp-beat     # Stop
+sudo systemctl restart plp-beat  # Restart
+sudo systemctl status plp-beat   # Status
+journalctl -u plp-beat -f        # Live logs
+```
+
 ## GUI Configuration
 
 QLC+ requires a GUI session for initial setup. After configuration, it runs headless.
@@ -323,6 +365,40 @@ uv run mypy qlcplus/
 # Run tests
 uv run pytest
 ```
+
+## Test Data
+
+### Ground Truth Data (`test_data/`)
+
+The `test_data/` directory contains audio files with **precise beat grid data** from rekordbox analysis:
+
+```bash
+# Run benchmark on a single file
+uv run python -m plp_beat_service.benchmark test_data/narciss_tall_people_140.mp3 -e 140
+
+# Run on all test files
+for f in test_data/*.mp3; do
+    bpm=$(echo "$f" | grep -oP '\d+(?=\.mp3)')
+    echo "Testing: $f (expected: $bpm BPM)"
+    uv run python -m plp_beat_service.benchmark "$f" -e "$bpm"
+done
+```
+
+Each track has a JSON file with ground-truth beat times:
+```json
+{
+  "bpm": 140.0,
+  "first_beat_sec": 0.214,
+  "beats": [0.214, 0.643, 1.071, ...],
+  "audio_file": "narciss_tall_people_140.mp3"
+}
+```
+
+See `test_data/README.md` for the full format and evaluation code.
+
+### Legacy Sample Data (`sample_data/`)
+
+The `sample_data/` directory contains older test files with BPM in the filename (e.g., `underworld_dark_and_long_135.mp3`).
 
 ## Troubleshooting
 
@@ -431,17 +507,23 @@ Example in project file:
 | `qlcplus/__init__.py` | Package exports (`QLCPlusClient`, `QLCPlusError`) |
 | `qlcplus/client.py` | WebSocket client implementation |
 | `qlcplus/py.typed` | PEP 561 marker for type checking |
+| `plp_beat_service/` | PLP beat detection service package |
+| `plp_beat_service/benchmark.py` | File-based beat detection testing (faster than real-time) |
+| `plp_beat_service/debug_server.py` | WebSocket debug server for visualization |
+| `plp_beat_service/static/debug.html` | Browser-based debug console |
+| `plp-beat.service` | Systemd unit file for beat detection |
+| `test_data/` | Ground-truth beat data from rekordbox (JSON + MP3) |
+| `preprocess_rekordbox.py` | Generate test_data from rekordbox XML export |
 | `ws_control.py` | CLI tool using WebSocket API |
-| `beat_to_midi.py` | Beat detection to MIDI clock/notes (aubio + PLL) |
-| `audio_reactive.py` | Legacy direct DMX audio reactive control |
-| `osc_control.py` | Legacy OSC control (kept for compatibility) |
 | `spotlight.qxw` | QLC+ project file (XML) |
-| `qlcplus.service` | Systemd unit file for headless operation |
-| `qlc-service.sh` | Helper script for service management |
+| `qlcplus.service` | Systemd unit file for QLC+ headless operation |
+| `qlc-service.sh` | Helper script for QLC+ service management |
 | `pyproject.toml` | Package metadata and tool configuration |
 | `uv.lock` | Locked dependencies for reproducible installs |
-| `INTEGRATION.md` | Guide for integrating into other services |
 | `BEAT_DETECTION.md` | Technical docs for beat detection system |
+| `beat_to_midi.py` | **Deprecated** - aubio+PLL approach, replaced by plp_beat_service |
+| `audio_reactive.py` | **Deprecated** - direct DMX control |
+| `osc_control.py` | **Deprecated** - OSC control |
 
 ## License
 

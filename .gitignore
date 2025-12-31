@@ -1,2 +1,8 @@
 __pycache__/
 sample_data/
+test_data/
+rekordbox_export.xml
+.agent-project-docs/
+
+.project-plan/
+test_data/benchmark_140_room.jsonl

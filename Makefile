@@ -1,104 +1,264 @@
-.PHONY: help install start stop restart status logs gui test lint format check sync clean audio audio-pulse audio-color beat beat-debug beat-filter beat-note beat-devices beat-file midi-connect reactive reactive-manual beat-service-install beat-service-start beat-service-stop beat-service-status beat-service-logs
+.PHONY: help
+.PHONY: qlc-install qlc-start qlc-stop qlc-restart qlc-status qlc-logs qlc-gui
+.PHONY: beat-install beat-start beat-stop beat-restart beat-status beat-logs beat-debug
+.PHONY: plp plp-midi plp-clock plp-devices plp-benchmark
+.PHONY: aubio aubio-debug aubio-note aubio-devices aubio-file
+.PHONY: red blue green yellow orange cyan purple pink white off fade reactive list
+.PHONY: sync test lint format check clean
 
-# Default target
+# =============================================================================
+# Help
+# =============================================================================
+
 help:
-	@echo "QLC+ Lighting Control - Available Commands"
+	@echo "QLC+ Lighting Control"
+	@echo "====================="
 	@echo ""
-	@echo "Service Management:"
-	@echo "  make install    - Install systemd service and symlink project"
-	@echo "  make start      - Start headless QLC+ service"
-	@echo "  make stop       - Stop service (to use GUI)"
-	@echo "  make restart    - Restart the service"
-	@echo "  make status     - Check service status"
-	@echo "  make logs       - View live logs (Ctrl+C to exit)"
-	@echo "  make gui        - Stop service and launch GUI for editing"
+	@echo "SERVICES (systemd):"
+	@echo "  make qlc-install     Install QLC+ systemd service"
+	@echo "  make qlc-start       Start QLC+ lighting daemon"
+	@echo "  make qlc-stop        Stop QLC+ daemon"
+	@echo "  make qlc-restart     Restart QLC+ daemon"
+	@echo "  make qlc-status      Check QLC+ status"
+	@echo "  make qlc-logs        Tail QLC+ logs"
+	@echo "  make qlc-gui         Stop daemon and open GUI"
+	@echo ""
+	@echo "  make beat-install    Install PLP beat detection service"
+	@echo "  make beat-start      Start beat detection service"
+	@echo "  make beat-stop       Stop beat detection service"
+	@echo "  make beat-restart    Restart beat detection service"
+	@echo "  make beat-status     Check beat detection status"
+	@echo "  make beat-logs       Tail beat detection logs"
+	@echo "  make beat-debug      Show debug console URL"
+	@echo ""
+	@echo "LIGHT CONTROL:"
+	@echo "  make red|blue|green|white|off|fade|..."
+	@echo "  make list            List all QLC+ functions"
+	@echo "  make reactive        Enable beat-reactive mode in QLC+"
+	@echo ""
+	@echo "BEAT DETECTION (manual/testing):"
+	@echo "  make plp             Run PLP beat tracker (OSC output)"
+	@echo "  make plp-midi        Run PLP with MIDI note output"
+	@echo "  make plp-devices     List audio devices"
+	@echo "  make plp-benchmark FILE=x.wav  Benchmark on audio file"
+	@echo ""
+	@echo "  make aubio           Run legacy aubio detector (MIDI clock)"
+	@echo "  make aubio-note      Run legacy aubio (MIDI notes)"
+	@echo ""
+	@echo "DEVELOPMENT:"
+	@echo "  make sync            Install dependencies"
+	@echo "  make check           Run linter + type checker"
+	@echo ""
+	@echo "Run 'make help-full' for all targets"
+
+help-full: help
+	@echo ""
+	@echo "ALL TARGETS:"
+	@echo ""
+	@echo "QLC+ Service:"
+	@echo "  qlc-install    Install QLC+ systemd service"
+	@echo "  qlc-start      Start QLC+ service"
+	@echo "  qlc-stop       Stop QLC+ service"
+	@echo "  qlc-restart    Restart QLC+ service"
+	@echo "  qlc-status     Show QLC+ service status"
+	@echo "  qlc-logs       Tail QLC+ logs (Ctrl+C to exit)"
+	@echo "  qlc-gui        Stop service and open QLC+ GUI"
+	@echo ""
+	@echo "Beat Detection Service:"
+	@echo "  beat-install   Install PLP beat service (replaces legacy)"
+	@echo "  beat-start     Start beat detection service"
+	@echo "  beat-stop      Stop beat detection service"
+	@echo "  beat-restart   Restart beat detection service"
+	@echo "  beat-status    Show beat service status"
+	@echo "  beat-logs      Tail beat detection logs"
+	@echo ""
+	@echo "PLP Beat Detection (manual):"
+	@echo "  plp            OSC output to QLC+ (recommended)"
+	@echo "  plp-midi       MIDI note output"
+	@echo "  plp-clock      MIDI clock (24 PPQN)"
+	@echo "  plp-devices    List audio input devices"
+	@echo "  plp-benchmark  Test with audio file (FILE=path.wav)"
+	@echo ""
+	@echo "Legacy Aubio Beat Detection (manual):"
+	@echo "  aubio          MIDI clock output"
+	@echo "  aubio-debug    With debug output"
+	@echo "  aubio-filter   With kick drum filter"
+	@echo "  aubio-note     MIDI note output"
+	@echo "  aubio-devices  List audio devices"
+	@echo "  aubio-file     Test with file (FILE=path.wav)"
+	@echo ""
+	@echo "Light Control:"
+	@echo "  red, blue, green, yellow, orange, cyan, purple, pink, white"
+	@echo "  off            Turn light off"
+	@echo "  fade           Rainbow fade effect"
+	@echo "  reactive       Beat-reactive mode"
+	@echo "  list           List QLC+ functions"
 	@echo ""
 	@echo "Development:"
-	@echo "  make sync       - Install Python dependencies with uv"
-	@echo "  make test       - Run tests"
-	@echo "  make lint       - Run linter (ruff)"
-	@echo "  make format     - Format code (ruff)"
-	@echo "  make check      - Run all checks (lint + format + type check)"
-	@echo ""
-	@echo "Control:"
-	@echo "  make red        - Set light to red"
-	@echo "  make blue       - Set light to blue"
-	@echo "  make green      - Set light to green"
-	@echo "  make white      - Set light to white"
-	@echo "  make off        - Turn light off"
-	@echo "  make fade       - Start rainbow fade"
-	@echo "  make reactive   - Start beat-reactive mode"
-	@echo "  make list       - List all QLC+ functions"
-	@echo ""
-	@echo "Beat Detection (with PLL stabilization):"
-	@echo "  make beat         - Beat->MIDI Clock (aubio + PLL)"
-	@echo "  make beat-debug   - Same as beat, with debug output"
-	@echo "  make beat-filter  - With kick drum bandpass filter"
-	@echo "  make beat-note    - Beat->MIDI Notes instead of clock"
-	@echo "  make beat-devices - List audio input devices"
-	@echo "  make beat-file FILE=test.wav - Test with audio file"
-	@echo ""
-	@echo "Beat-Reactive Lighting (requires beat service running):"
-	@echo "  make beat-service-install  - Install beat detection as systemd service"
-	@echo "  make beat-service-start    - Start beat detection service"
-	@echo "  make beat-service-stop     - Stop beat detection service"
-	@echo "  make beat-service-status   - Check beat detection service status"
-	@echo "  make beat-service-logs     - Tail beat detection logs"
-	@echo "  make midi-connect          - Connect BeatClock MIDI to Midi Through"
-	@echo "  make reactive-manual       - Full manual workflow (no service)"
-	@echo ""
-	@echo "Audio Reactive (legacy):"
-	@echo "  make audio      - Direct DMX control (intensity mode)"
-	@echo "  make audio-pulse - Direct DMX with beat flash"
-	@echo "  make audio-color - Direct DMX with color cycling"
+	@echo "  sync           Install Python dependencies"
+	@echo "  test           Run pytest"
+	@echo "  lint           Run ruff linter"
+	@echo "  format         Format code with ruff"
+	@echo "  check          Run lint + mypy"
+	@echo "  clean          Remove cache files"
 
 # =============================================================================
-# Service Management
+# QLC+ Service Management
 # =============================================================================
 
-install:
+qlc-install:
 	@./qlc-service.sh install
 
-start:
+qlc-start:
 	@./qlc-service.sh start
 
-stop:
+qlc-stop:
 	@./qlc-service.sh stop
 
-restart:
+qlc-restart:
 	@./qlc-service.sh restart
 
-status:
+qlc-status:
 	@./qlc-service.sh status
 
-logs:
+qlc-logs:
 	@./qlc-service.sh logs
 
-gui:
+qlc-gui:
 	@./qlc-service.sh gui
 
-# =============================================================================
-# Development
-# =============================================================================
-
-sync:
-	uv sync --dev
-
-test:
-	uv run pytest
-
-lint:
-	uv run ruff check qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
-
-format:
-	uv run ruff format qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
-	uv run ruff check --fix qlcplus/ ws_control.py audio_reactive.py beat_to_midi.py
-
-check: lint
-	uv run mypy qlcplus/
+# Legacy aliases (for backwards compatibility)
+install: qlc-install
+start: qlc-start
+stop: qlc-stop
+restart: qlc-restart
+status: qlc-status
+logs: qlc-logs
+gui: qlc-gui
 
 # =============================================================================
-# Light Control (shortcuts)
+# Beat Detection Service Management
+# =============================================================================
+
+beat-install:
+	@echo "Installing PLP beat detection service..."
+	@sudo cp plp-beat.service /etc/systemd/system/
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable plp-beat
+	@echo ""
+	@echo "Installed. Disabling legacy beat-midi service if present..."
+	@sudo systemctl disable beat-midi 2>/dev/null || true
+	@echo ""
+	@echo "Start with: make beat-start"
+
+beat-start:
+	@sudo systemctl start plp-beat
+	@sleep 2
+	@sudo systemctl status plp-beat --no-pager | head -12
+
+beat-stop:
+	@sudo systemctl stop plp-beat
+
+beat-restart:
+	@sudo systemctl restart plp-beat
+	@sleep 2
+	@sudo systemctl status plp-beat --no-pager | head -12
+
+beat-status:
+	@sudo systemctl status plp-beat --no-pager
+
+beat-logs:
+	@journalctl -u plp-beat -f
+
+beat-debug:
+	@echo ""
+	@echo "PLP Beat Debug Console"
+	@echo "======================"
+	@echo ""
+	@echo "Open in browser: http://192.168.0.221:8080/debug.html"
+	@echo ""
+	@echo "Shows real-time:"
+	@echo "  - Onset envelope (transient detection)"
+	@echo "  - PLP pulse curve (beat probability)"
+	@echo "  - Confidence components (pulse/tempo/raw)"
+	@echo "  - State machine status (SEARCHING/LOCKED/HOLDOVER)"
+	@echo ""
+	@systemctl is-active plp-beat >/dev/null 2>&1 || echo "WARNING: plp-beat service is not running. Start with: make beat-start"
+	@echo ""
+
+# Legacy beat service (for reference - prefer beat-* targets above)
+beat-service-install:
+	@echo "NOTE: Use 'make beat-install' for PLP service instead"
+	@echo "Installing legacy beat-midi service..."
+	@sudo cp beat-midi.service /etc/systemd/system/
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable beat-midi
+
+beat-service-start:
+	@sudo systemctl start beat-midi
+	@sleep 2
+	@sudo systemctl status beat-midi --no-pager | head -10
+
+beat-service-stop:
+	@sudo systemctl stop beat-midi
+
+beat-service-status:
+	@sudo systemctl status beat-midi --no-pager
+
+beat-service-logs:
+	@journalctl -u beat-midi -f
+
+# =============================================================================
+# PLP Beat Detection (manual/testing)
+# =============================================================================
+
+plp:
+	@uv run plp-beat --device 5
+
+plp-midi:
+	@uv run plp-beat --device 5 --no-osc --midi
+
+plp-clock:
+	@uv run plp-beat --device 5 --no-osc --midi --clock
+
+plp-devices:
+	@uv run plp-beat --list-devices
+
+plp-benchmark:
+	@uv run python -m plp_beat_service.benchmark $(FILE)
+
+# =============================================================================
+# Legacy Aubio Beat Detection (manual/testing)
+# =============================================================================
+
+aubio:
+	@uv run python beat_to_midi.py --device 5 --no-filter
+
+aubio-debug:
+	@uv run python beat_to_midi.py --device 5 --no-filter --debug
+
+aubio-filter:
+	@uv run python beat_to_midi.py --device 5 --debug
+
+aubio-note:
+	@uv run python beat_to_midi.py --device 5 --no-filter --note-mode
+
+aubio-devices:
+	@uv run python beat_to_midi.py --list-devices
+
+aubio-file:
+	@uv run python beat_to_midi.py --no-filter --debug --file $(FILE)
+
+# Legacy aliases
+beat: aubio
+beat-debug: aubio-debug
+beat-filter: aubio-filter
+beat-note: aubio-note
+beat-devices: aubio-devices
+beat-file: aubio-file
+
+# =============================================================================
+# Light Control
 # =============================================================================
 
 red:
@@ -141,7 +301,44 @@ list:
 	@uv run python ws_control.py --list
 
 # =============================================================================
-# Audio Reactive (legacy - direct DMX control)
+# MIDI Utilities
+# =============================================================================
+
+midi-list:
+	@aconnect -l
+
+midi-connect:
+	@echo "Connecting beat MIDI port to Midi Through..."
+	@PORT=$$(aconnect -l | grep -E "PLPBeat|BeatClock" | head -1 | sed 's/client \([0-9]*\):.*/\1/'); \
+	if [ -n "$$PORT" ]; then \
+		aconnect $$PORT:0 14:0 2>/dev/null && echo "Connected: $$PORT -> Midi Through (14)"; \
+	else \
+		echo "Error: No beat MIDI port found. Start plp-beat or beat_to_midi.py first"; \
+		exit 1; \
+	fi
+
+# =============================================================================
+# Development
+# =============================================================================
+
+sync:
+	uv sync --dev --all-extras
+
+test:
+	uv run pytest
+
+lint:
+	uv run ruff check .
+
+format:
+	uv run ruff format .
+	uv run ruff check --fix .
+
+check: lint
+	uv run mypy qlcplus/ plp_beat_service/
+
+# =============================================================================
+# Legacy Audio Reactive (direct DMX - rarely used)
 # =============================================================================
 
 audio:
@@ -154,82 +351,8 @@ audio-color:
 	@uv run python audio_reactive.py --mode color
 
 # =============================================================================
-# Beat Detection (madmom/aubio -> PLL -> MIDI Clock)
-# =============================================================================
-
-beat:
-	@uv run python beat_to_midi.py --device 5 --no-filter
-
-beat-debug:
-	@uv run python beat_to_midi.py --device 5 --no-filter --debug
-
-beat-filter:
-	@uv run python beat_to_midi.py --device 5 --debug
-
-beat-note:
-	@uv run python beat_to_midi.py --device 5 --no-filter --note-mode
-
-beat-devices:
-	@uv run python beat_to_midi.py --list-devices
-
-beat-file:
-	@uv run python beat_to_midi.py --no-filter --debug --file $(FILE)
-
-# =============================================================================
-# Beat-Reactive Lighting Integration
-# =============================================================================
-
-# Connect BeatClock virtual MIDI port to Midi Through (stable bridge to QLC+)
-midi-connect:
-	@echo "Connecting BeatClock MIDI to Midi Through..."
-	@BEATCLOCK=$$(aconnect -l | grep -B1 "BeatClock" | head -1 | sed 's/client \([0-9]*\):.*/\1/'); \
-	if [ -n "$$BEATCLOCK" ]; then \
-		aconnect $$BEATCLOCK:0 14:0 2>/dev/null && echo "Connected: BeatClock ($$BEATCLOCK) -> Midi Through (14)"; \
-	else \
-		echo "Error: BeatClock not found. Start beat_to_midi.py with --note-mode first"; \
-		exit 1; \
-	fi
-
-# Full manual workflow (without using beat-midi service)
-reactive-manual:
-	@echo "Starting beat-reactive lighting (manual mode)..."
-	@uv run python ws_control.py reactive
-	@echo "Starting beat detection..."
-	@uv run python beat_to_midi.py --device 5 --no-filter --note-mode &
-	@BEAT_PID=$$!; \
-	for i in 1 2 3 4 5; do sleep 0.5; aconnect -l | grep -q "BeatClock" && break; done; \
-	$(MAKE) midi-connect; \
-	echo "Beat detection running (Ctrl+C to stop)..."; \
-	wait $$BEAT_PID
-
-# =============================================================================
-# Beat Detection Service (for always-on operation)
-# =============================================================================
-
-beat-service-install:
-	@echo "Installing beat-midi service..."
-	@sudo cp beat-midi.service /etc/systemd/system/
-	@sudo systemctl daemon-reload
-	@sudo systemctl enable beat-midi
-	@echo "Installed. Start with: make beat-service-start"
-
-beat-service-start:
-	@sudo systemctl start beat-midi
-	@sleep 2
-	@sudo systemctl status beat-midi --no-pager | head -10
-
-beat-service-stop:
-	@sudo systemctl stop beat-midi
-
-beat-service-status:
-	@sudo systemctl status beat-midi --no-pager
-
-beat-service-logs:
-	@journalctl -u beat-midi -f
-
-# =============================================================================
 # Cleanup
 # =============================================================================
 
 clean:
-	rm -rf .venv __pycache__ qlcplus/__pycache__ .pytest_cache .mypy_cache .ruff_cache
+	rm -rf .venv __pycache__ qlcplus/__pycache__ plp_beat_service/__pycache__ .pytest_cache .mypy_cache .ruff_cache
