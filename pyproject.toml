@@ -39,15 +39,25 @@ dev = [
 osc = [
     "python-osc>=1.8.0",
 ]
+plp = [
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "sounddevice>=0.4.0",
+    "librosa>=0.10.0",
+    "python-osc>=1.8.0",
+    "python-rtmidi>=1.5.0",
+    "websockets>=12.0",
+]
 
 [project.urls]
 Repository = "https://github.com/joshlebed/qlc-config"
 
 [project.scripts]
 qlc = "ws_control:main"
+plp-beat = "plp_beat_service.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["qlcplus"]
+packages = ["qlcplus", "plp_beat_service"]
 
 # Ruff configuration (linting + formatting)
 [tool.ruff]
@@ -81,6 +91,10 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "websocket.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sounddevice.*", "librosa.*", "pythonosc.*", "scipy.*", "websockets.*"]
 ignore_missing_imports = true
 
 # Pytest configuration

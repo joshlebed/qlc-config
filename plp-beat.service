@@ -1,0 +1,32 @@
+[Unit]
+Description=PLP Beat Detection Service
+Documentation=https://github.com/joshlebed/qlc-config
+After=sound.target qlcplus.service
+Wants=qlcplus.service
+
+[Service]
+Type=simple
+User=joshlebed
+Group=joshlebed
+WorkingDirectory=/home/joshlebed/code/qlc-config
+Environment=PYTHONUNBUFFERED=1
+
+# PLP beat detection with MIDI note output
+# Device 5 = H4 USB Audio (supports 44100 Hz)
+# Debug server enabled by default on ports 9998 (WS) and 8080 (HTTP)
+ExecStart=/home/joshlebed/.local/bin/uv run plp-beat --device 5 --midi
+
+# Connect MIDI port to Midi Through after startup
+# Use grep -B1 to get the line before PLPBeat (contains client number)
+ExecStartPost=/bin/bash -c 'sleep 2 && for i in 1 2 3 4 5; do PORT=$$(aconnect -l | grep -B1 "PLPBeat" | head -1 | sed "s/client \\([0-9]*\\):.*/\\1/"); if [ -n "$$PORT" ] && [ "$$PORT" -gt 0 ] 2>/dev/null; then aconnect $$PORT:0 14:0 && echo "Connected PLPBeat ($$PORT) to Midi Through" && break; fi; sleep 1; done'
+
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=plp-beat
+
+[Install]
+WantedBy=multi-user.target
