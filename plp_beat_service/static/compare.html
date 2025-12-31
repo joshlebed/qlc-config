@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLP Beat Tracker - Recording Comparison</title>
+    <script src="https://cdn.jsdelivr.net/npm/smoothie@1.36.1/smoothie.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #111;
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #aaa;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover {
+            background: #444;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        select {
+            background: #222;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: inherit;
+            min-width: 250px;
+        }
+        select:focus {
+            outline: none;
+            border-color: #4af;
+        }
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        input[type="range"] {
+            width: 100px;
+        }
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .status-value.bpm { color: #4af; }
+        .status-value.confidence { color: #4fa; }
+        .status-value.beats { color: #fa4; }
+        .status-value.state { font-size: 18px; }
+        .state-SEARCHING { color: #f44; }
+        .state-LOCKED { color: #4f4; }
+        .state-HOLDOVER { color: #ff4; }
+
+        .chart-container {
+            margin-bottom: 15px;
+            position: relative;
+        }
+        .chart-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        canvas {
+            width: 100%;
+            height: 100px;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        .beat-flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 255, 100, 0.1);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.05s;
+        }
+        .beat-flash.active {
+            opacity: 1;
+        }
+
+        .info {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #555;
+        }
+        .info p {
+            margin: 4px 0;
+        }
+
+        .progress-container {
+            margin: 15px 0;
+            background: #222;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4af;
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        .metadata {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        .metadata-item {
+            display: inline-block;
+            margin-right: 20px;
+        }
+        .metadata-label {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="beat-flash" id="beatFlash"></div>
+
+    <h1>PLP Beat Tracker - Recording Comparison</h1>
+
+    <div class="controls">
+        <select id="recordingSelect">
+            <option value="">-- Select Recording --</option>
+        </select>
+        <button id="loadBtn">Load</button>
+        <button id="refreshBtn">Refresh List</button>
+        <button id="playBtn" disabled>Play</button>
+        <button id="pauseBtn" disabled>Pause</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <div class="speed-control">
+            <span>Speed:</span>
+            <input type="range" id="speedSlider" min="0.1" max="10" step="0.1" value="1">
+            <span id="speedValue">1.0x</span>
+        </div>
+    </div>
+
+    <div class="metadata" id="metadata" style="display: none;">
+        <span class="metadata-item"><span class="metadata-label">File:</span> <span id="metaFile">-</span></span>
+        <span class="metadata-item"><span class="metadata-label">Duration:</span> <span id="metaDuration">-</span></span>
+        <span class="metadata-item"><span class="metadata-label">Expected BPM:</span> <span id="metaExpectedBpm">-</span></span>
+        <span class="metadata-item"><span class="metadata-label">Frames:</span> <span id="metaFrames">-</span></span>
+    </div>
+
+    <div class="progress-container" id="progressContainer" style="display: none;">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="status-label">Time</span>
+            <span class="status-value" id="timeValue">0.0s</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">State</span>
+            <span class="status-value state" id="stateValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">BPM</span>
+            <span class="status-value bpm" id="bpmValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Confidence</span>
+            <span class="status-value confidence" id="confidenceValue">--%</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Beats</span>
+            <span class="status-value beats" id="beatCount">0</span>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">Onset Envelope</div>
+        <canvas id="onsetChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">PLP Pulse + Beat Markers</div>
+        <canvas id="pulseChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">Confidence (pulse=red, tempo=blue, raw=green, smoothed=white)</div>
+        <canvas id="confChart"></canvas>
+    </div>
+
+    <div class="status-bar" style="margin-top: 10px; font-size: 14px;">
+        <div class="status-item">
+            <span class="status-label">Raw BPM</span>
+            <span class="status-value" id="bpmRaw" style="font-size: 18px; color: #888;">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Good Count</span>
+            <span class="status-value" id="goodCount" style="font-size: 18px; color: #4f4;">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Bad Count</span>
+            <span class="status-value" id="badCount" style="font-size: 18px; color: #f44;">0</span>
+        </div>
+    </div>
+
+    <div class="info">
+        <p>Select a recording from the dropdown (files from test_data/*.jsonl).</p>
+        <p>Create recordings with: <code>python -m plp_beat_service.benchmark track.mp3 --record output.jsonl</code></p>
+        <p>Or from live mic: <code>python -m plp_beat_service.cli --record output.jsonl</code></p>
+        <p>Use speed slider to play faster/slower than real-time.</p>
+    </div>
+
+    <script>
+        // Check if Smoothie.js loaded
+        if (typeof SmoothieChart === 'undefined') {
+            document.body.innerHTML = '<div style="padding:40px;color:#f44;"><h1>Error: Smoothie.js failed to load</h1></div>';
+            throw new Error('SmoothieChart not loaded');
+        }
+
+        // State
+        let frames = [];
+        let header = null;
+        let summary = null;
+        let currentFrame = 0;
+        let isPlaying = false;
+        let playbackSpeed = 1.0;
+        let animationId = null;
+        let lastFrameTime = 0;
+
+        // DOM elements
+        const recordingSelect = document.getElementById('recordingSelect');
+        const loadBtn = document.getElementById('loadBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const beatFlash = document.getElementById('beatFlash');
+        const progressBar = document.getElementById('progressBar');
+
+        // Create Smoothie charts
+        const chartOptions = {
+            millisPerPixel: 15,
+            grid: {
+                strokeStyle: '#333',
+                fillStyle: '#1a1a1a',
+                lineWidth: 1,
+                millisPerLine: 1000,
+                verticalSections: 4
+            },
+            labels: {
+                fillStyle: '#888',
+                fontSize: 11
+            },
+            interpolation: 'linear',
+            responsive: true
+        };
+
+        // Onset chart
+        const onsetChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 15,
+            minValue: 0
+        });
+        const onsetSeries = new TimeSeries();
+        onsetChart.addTimeSeries(onsetSeries, {
+            strokeStyle: 'rgba(255, 100, 100, 1)',
+            lineWidth: 2
+        });
+        onsetChart.streamTo(document.getElementById('onsetChart'), 100);
+
+        // Pulse chart
+        const pulseChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 1,
+            minValue: 0
+        });
+        const pulseSeries = new TimeSeries();
+        const beatMarkerSeries = new TimeSeries();
+        pulseChart.addTimeSeries(pulseSeries, {
+            strokeStyle: 'rgba(100, 200, 255, 1)',
+            lineWidth: 2
+        });
+        pulseChart.addTimeSeries(beatMarkerSeries, {
+            strokeStyle: 'rgba(0, 255, 100, 0.8)',
+            lineWidth: 3
+        });
+        pulseChart.streamTo(document.getElementById('pulseChart'), 100);
+
+        // Confidence chart
+        const confChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 1,
+            minValue: 0
+        });
+        const confPulseSeries = new TimeSeries();
+        const confTempoSeries = new TimeSeries();
+        const confRawSeries = new TimeSeries();
+        const confSmoothedSeries = new TimeSeries();
+        confChart.addTimeSeries(confPulseSeries, { strokeStyle: 'rgba(255, 100, 100, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confTempoSeries, { strokeStyle: 'rgba(100, 100, 255, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confRawSeries, { strokeStyle: 'rgba(100, 255, 100, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confSmoothedSeries, { strokeStyle: 'rgba(255, 255, 255, 1)', lineWidth: 2 });
+        confChart.streamTo(document.getElementById('confChart'), 100);
+
+        // Fetch list of recordings from server
+        async function fetchRecordingsList() {
+            try {
+                const response = await fetch('/api/recordings');
+                const recordings = await response.json();
+
+                // Clear existing options (keep first placeholder)
+                while (recordingSelect.options.length > 1) {
+                    recordingSelect.remove(1);
+                }
+
+                // Add recordings to select
+                for (const filename of recordings) {
+                    const option = document.createElement('option');
+                    option.value = filename;
+                    option.textContent = filename;
+                    recordingSelect.appendChild(option);
+                }
+
+                console.log(`Found ${recordings.length} recordings`);
+            } catch (e) {
+                console.error('Failed to fetch recordings list:', e);
+            }
+        }
+
+        // Load selected recording from server
+        async function loadRecording(filename) {
+            if (!filename) return;
+
+            try {
+                const response = await fetch(`/recordings/${filename}`);
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+
+                frames = [];
+                header = null;
+                summary = null;
+
+                for (const line of lines) {
+                    try {
+                        const obj = JSON.parse(line);
+                        if (obj.type === 'header') {
+                            header = obj;
+                        } else if (obj.type === 'summary') {
+                            summary = obj;
+                        } else if (obj.type === 'frame') {
+                            frames.push(obj);
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse line:', line);
+                    }
+                }
+
+                console.log(`Loaded ${frames.length} frames from ${filename}`);
+
+                // Update metadata
+                if (header) {
+                    document.getElementById('metadata').style.display = 'block';
+                    document.getElementById('metaFile').textContent = header.file || header.source || filename;
+                    document.getElementById('metaDuration').textContent = header.duration ? `${header.duration.toFixed(1)}s` : '-';
+                    document.getElementById('metaExpectedBpm').textContent = header.expected_bpm || '-';
+                    document.getElementById('metaFrames').textContent = frames.length;
+                }
+
+                document.getElementById('progressContainer').style.display = 'block';
+
+                // Enable controls
+                playBtn.disabled = false;
+                stopBtn.disabled = false;
+                currentFrame = 0;
+                stop();
+            } catch (e) {
+                console.error('Failed to load recording:', e);
+                alert('Failed to load recording: ' + e.message);
+            }
+        }
+
+        // Event listeners for recording selection
+        loadBtn.addEventListener('click', () => {
+            loadRecording(recordingSelect.value);
+        });
+
+        refreshBtn.addEventListener('click', fetchRecordingsList);
+
+        // Load list on page load
+        fetchRecordingsList();
+
+        // Speed control
+        speedSlider.addEventListener('input', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+            speedValue.textContent = `${playbackSpeed.toFixed(1)}x`;
+        });
+
+        // Play/pause/stop
+        playBtn.addEventListener('click', play);
+        pauseBtn.addEventListener('click', pause);
+        stopBtn.addEventListener('click', stop);
+
+        function play() {
+            if (frames.length === 0) return;
+            if (currentFrame >= frames.length) currentFrame = 0;
+
+            isPlaying = true;
+            playBtn.disabled = true;
+            pauseBtn.disabled = false;
+            lastFrameTime = performance.now();
+            animate();
+        }
+
+        function pause() {
+            isPlaying = false;
+            playBtn.disabled = false;
+            pauseBtn.disabled = true;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        function stop() {
+            pause();
+            currentFrame = 0;
+            progressBar.style.width = '0%';
+            document.getElementById('timeValue').textContent = '0.0s';
+            document.getElementById('beatCount').textContent = '0';
+        }
+
+        function animate() {
+            if (!isPlaying || currentFrame >= frames.length) {
+                if (currentFrame >= frames.length) {
+                    console.log('Playback complete');
+                    pause();
+                }
+                return;
+            }
+
+            const now = performance.now();
+            const elapsed = (now - lastFrameTime) / 1000; // seconds
+
+            // Calculate how many frames to advance based on speed and frame rate
+            const frameTime = header ? (header.block_size / header.samplerate) : 0.023;
+            const framesToAdvance = Math.floor(elapsed * playbackSpeed / frameTime);
+
+            if (framesToAdvance > 0) {
+                lastFrameTime = now;
+
+                // Process frames
+                for (let i = 0; i < framesToAdvance && currentFrame < frames.length; i++) {
+                    processFrame(frames[currentFrame]);
+                    currentFrame++;
+                }
+
+                // Update progress
+                progressBar.style.width = `${(currentFrame / frames.length) * 100}%`;
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function processFrame(data) {
+            const now = Date.now();
+
+            // Update charts
+            onsetSeries.append(now, data.onset || 0);
+            pulseSeries.append(now, data.pulse || 0);
+
+            // Beat marker
+            if (data.beat) {
+                beatMarkerSeries.append(now, 1);
+                beatFlash.classList.add('active');
+                setTimeout(() => beatFlash.classList.remove('active'), 50);
+            } else {
+                beatMarkerSeries.append(now, 0);
+            }
+
+            // Confidence components
+            if (data.conf_pulse !== undefined) {
+                confPulseSeries.append(now, data.conf_pulse);
+                confTempoSeries.append(now, data.conf_tempo);
+                confRawSeries.append(now, data.conf_raw);
+                confSmoothedSeries.append(now, data.confidence);
+            }
+
+            // Update status display
+            document.getElementById('timeValue').textContent = `${data.ts.toFixed(1)}s`;
+
+            if (data.bpm > 0) {
+                document.getElementById('bpmValue').textContent = data.bpm.toFixed(1);
+            }
+
+            if (typeof data.confidence === 'number') {
+                document.getElementById('confidenceValue').textContent = (data.confidence * 100).toFixed(0) + '%';
+            }
+
+            if (data.state) {
+                const stateEl = document.getElementById('stateValue');
+                stateEl.textContent = data.state;
+                stateEl.className = 'status-value state state-' + data.state;
+            }
+
+            document.getElementById('beatCount').textContent = data.beats || 0;
+            document.getElementById('bpmRaw').textContent = data.bpm_raw > 0 ? data.bpm_raw.toFixed(1) : '--';
+            document.getElementById('goodCount').textContent = data.good_count || 0;
+            document.getElementById('badCount').textContent = data.bad_count || 0;
+        }
+    </script>
+</body>
+</html>

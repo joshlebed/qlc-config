@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLP Beat Tracker - Debug Console</title>
+    <script src="https://cdn.jsdelivr.net/npm/smoothie@1.36.1/smoothie.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #111;
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #aaa;
+        }
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .status-value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .status-value.bpm {
+            color: #4af;
+        }
+        .status-value.confidence {
+            color: #4fa;
+        }
+        .status-value.beats {
+            color: #fa4;
+        }
+        .status-value.state {
+            font-size: 24px;
+        }
+        .state-SEARCHING { color: #f44; }
+        .state-LOCKED { color: #4f4; }
+        .state-HOLDOVER { color: #ff4; }
+
+        .connection {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .connection.connected {
+            background: #143;
+            color: #4f4;
+        }
+        .connection.disconnected {
+            background: #411;
+            color: #f44;
+        }
+
+        .chart-container {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .chart-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        canvas {
+            width: 100%;
+            height: 120px;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        .beat-flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 255, 100, 0.1);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.05s;
+        }
+        .beat-flash.active {
+            opacity: 1;
+        }
+
+        .info {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="beat-flash" id="beatFlash"></div>
+
+    <h1>PLP Beat Tracker - Debug Console</h1>
+
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="status-label">Connection</span>
+            <span class="connection disconnected" id="connectionStatus">Disconnected</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">State</span>
+            <span class="status-value state" id="stateValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">BPM</span>
+            <span class="status-value bpm" id="bpmValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Confidence</span>
+            <span class="status-value confidence" id="confidenceValue">--%</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Beats</span>
+            <span class="status-value beats" id="beatCount">0</span>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">Onset Envelope (transient detection)</div>
+        <canvas id="onsetChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">PLP Pulse (beat probability)</div>
+        <canvas id="pulseChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-label">Confidence Components (pulse=red, tempo=blue, raw=green)</div>
+        <canvas id="confChart"></canvas>
+    </div>
+
+    <div class="status-bar" style="margin-top: 10px; font-size: 14px;">
+        <div class="status-item">
+            <span class="status-label">Raw BPM</span>
+            <span class="status-value" id="bpmRaw" style="font-size: 20px; color: #888;">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Good Count</span>
+            <span class="status-value" id="goodCount" style="font-size: 20px; color: #4f4;">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Bad Count</span>
+            <span class="status-value" id="badCount" style="font-size: 20px; color: #f44;">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Conf (P/T/R)</span>
+            <span class="status-value" id="confComponents" style="font-size: 16px; color: #aaa;">--</span>
+        </div>
+    </div>
+
+    <div class="info">
+        <p>Connect to: ws://<span id="wsHost"></span>:9998</p>
+        <p>Thresholds: lock=0.4, unlock=0.25 | Need 4 good beats to lock, 2 bad frames to holdover</p>
+    </div>
+
+    <script>
+        console.log('[debug] Script starting...');
+
+        // Check if Smoothie.js loaded
+        if (typeof SmoothieChart === 'undefined') {
+            console.error('[debug] ERROR: SmoothieChart is not defined - CDN failed to load');
+            document.body.innerHTML = '<div style="padding:40px;color:#f44;font-family:monospace;"><h1>Error: Smoothie.js failed to load</h1><p>The CDN might be blocked or unavailable.</p><p>Check browser console for details.</p></div>';
+            throw new Error('SmoothieChart not loaded');
+        }
+        console.log('[debug] SmoothieChart loaded OK');
+
+        // Auto-detect WebSocket host
+        const wsHost = window.location.hostname || 'localhost';
+        console.log('[debug] WebSocket host:', wsHost);
+        document.getElementById('wsHost').textContent = wsHost;
+
+        // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const stateValue = document.getElementById('stateValue');
+        const bpmValue = document.getElementById('bpmValue');
+        const confidenceValue = document.getElementById('confidenceValue');
+        const beatCount = document.getElementById('beatCount');
+        const beatFlash = document.getElementById('beatFlash');
+
+        // Beat counter
+        let beats = 0;
+        let frameCount = 0;
+        let lastSeq = -1;
+        let gapCount = 0;
+
+        // Create Smoothie charts
+        console.log('[debug] Creating charts...');
+        const chartOptions = {
+            millisPerPixel: 15,
+            grid: {
+                strokeStyle: '#333',
+                fillStyle: '#1a1a1a',
+                lineWidth: 1,
+                millisPerLine: 1000,
+                verticalSections: 4
+            },
+            labels: {
+                fillStyle: '#888',
+                fontSize: 11
+            },
+            timestampFormatter: SmoothieChart.timeFormatter,
+            interpolation: 'linear',
+            responsive: true
+        };
+
+        // Onset chart (0-10 range typical)
+        const onsetChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 15,
+            minValue: 0
+        });
+        const onsetSeries = new TimeSeries();
+        onsetChart.addTimeSeries(onsetSeries, {
+            strokeStyle: 'rgba(255, 100, 100, 1)',
+            lineWidth: 2
+        });
+        onsetChart.streamTo(document.getElementById('onsetChart'), 100);
+
+        // Pulse chart (0-1 range)
+        const pulseChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 1,
+            minValue: 0
+        });
+        const pulseSeries = new TimeSeries();
+        const beatMarkerSeries = new TimeSeries();
+        pulseChart.addTimeSeries(pulseSeries, {
+            strokeStyle: 'rgba(100, 200, 255, 1)',
+            lineWidth: 2
+        });
+        pulseChart.addTimeSeries(beatMarkerSeries, {
+            strokeStyle: 'rgba(0, 255, 100, 0.8)',
+            lineWidth: 3
+        });
+        pulseChart.streamTo(document.getElementById('pulseChart'), 100);
+
+        // Confidence components chart (0-1 range)
+        const confChart = new SmoothieChart({
+            ...chartOptions,
+            maxValue: 1,
+            minValue: 0
+        });
+        const confPulseSeries = new TimeSeries();
+        const confTempoSeries = new TimeSeries();
+        const confRawSeries = new TimeSeries();
+        const confSmoothedSeries = new TimeSeries();
+        confChart.addTimeSeries(confPulseSeries, { strokeStyle: 'rgba(255, 100, 100, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confTempoSeries, { strokeStyle: 'rgba(100, 100, 255, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confRawSeries, { strokeStyle: 'rgba(100, 255, 100, 0.8)', lineWidth: 1 });
+        confChart.addTimeSeries(confSmoothedSeries, { strokeStyle: 'rgba(255, 255, 255, 1)', lineWidth: 2 });
+        confChart.streamTo(document.getElementById('confChart'), 100);
+
+        // Extra DOM elements for diagnostics
+        const bpmRaw = document.getElementById('bpmRaw');
+        const goodCountEl = document.getElementById('goodCount');
+        const badCountEl = document.getElementById('badCount');
+        const confComponentsEl = document.getElementById('confComponents');
+
+        // WebSocket connection
+        let ws = null;
+        let reconnectTimeout = null;
+
+        function connect() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+
+            const wsUrl = `ws://${wsHost}:9998`;
+            console.log('[debug] Connecting to WebSocket:', wsUrl);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connection connected';
+                console.log('[debug] WebSocket connected!');
+            };
+
+            ws.onclose = (event) => {
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'connection disconnected';
+                console.log('[debug] WebSocket closed. Code:', event.code, 'Reason:', event.reason || '(none)');
+                console.log('[debug] Reconnecting in 2 seconds...');
+                reconnectTimeout = setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('[debug] WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleFrame(data);
+                } catch (e) {
+                    console.error('[debug] JSON parse error:', e, 'Raw data:', event.data);
+                }
+            };
+        }
+
+        function handleFrame(data) {
+            frameCount++;
+
+            // Check sequence numbers for gaps
+            if (data.seq !== undefined) {
+                if (lastSeq >= 0 && data.seq !== lastSeq + 1) {
+                    const gap = data.seq - lastSeq - 1;
+                    gapCount += gap;
+                    console.warn(`[debug] SEQUENCE GAP: expected ${lastSeq + 1}, got ${data.seq} (${gap} frames lost, total gaps: ${gapCount})`);
+                }
+                lastSeq = data.seq;
+            }
+
+            if (frameCount === 1) {
+                console.log('[debug] First frame received:', data);
+            } else if (frameCount % 100 === 0) {
+                console.log(`[debug] Frames: ${frameCount}, seq: ${data.seq}, gaps: ${gapCount}, bpm: ${data.bpm?.toFixed(1)}, state: ${data.state}`);
+            }
+
+            // Log every beat - show server beat count for sync verification
+            if (data.beat) {
+                console.log(`[debug] BEAT #${data.beats} at seq ${data.seq}, bpm: ${data.bpm?.toFixed(1)}, conf: ${(data.confidence * 100).toFixed(0)}%`);
+            }
+
+            const now = Date.now();
+
+            // Update charts
+            onsetSeries.append(now, data.onset || 0);
+            pulseSeries.append(now, data.pulse || 0);
+
+            // Beat marker (spike on beat detection)
+            if (data.beat) {
+                beatMarkerSeries.append(now, 1);
+                beats++;
+                // Show server's beat count (data.beats) for sync verification
+                beatCount.textContent = data.beats !== undefined ? data.beats : beats;
+
+                // Flash effect
+                beatFlash.classList.add('active');
+                setTimeout(() => beatFlash.classList.remove('active'), 50);
+            } else {
+                beatMarkerSeries.append(now, 0);
+            }
+
+            // Update status display
+            if (data.bpm > 0) {
+                bpmValue.textContent = data.bpm.toFixed(1);
+            }
+
+            if (typeof data.confidence === 'number') {
+                confidenceValue.textContent = (data.confidence * 100).toFixed(0) + '%';
+            }
+
+            if (data.state) {
+                stateValue.textContent = data.state;
+                stateValue.className = 'status-value state state-' + data.state;
+            }
+
+            // Update confidence components chart
+            if (data.conf_pulse !== undefined) {
+                confPulseSeries.append(now, data.conf_pulse);
+                confTempoSeries.append(now, data.conf_tempo);
+                confRawSeries.append(now, data.conf_raw);
+                confSmoothedSeries.append(now, data.confidence);
+
+                // Update diagnostic display
+                confComponentsEl.textContent = `${(data.conf_pulse * 100).toFixed(0)}/${(data.conf_tempo * 100).toFixed(0)}/${(data.conf_raw * 100).toFixed(0)}`;
+            }
+
+            // Update state machine counters
+            if (data.good_count !== undefined) {
+                goodCountEl.textContent = data.good_count;
+            }
+            if (data.bad_count !== undefined) {
+                badCountEl.textContent = data.bad_count;
+            }
+            if (data.bpm_raw !== undefined) {
+                bpmRaw.textContent = data.bpm_raw > 0 ? data.bpm_raw.toFixed(1) : '--';
+            }
+        }
+
+        // Start connection
+        console.log('[debug] Initialization complete, starting WebSocket connection...');
+        connect();
+    </script>
+</body>
+</html>
