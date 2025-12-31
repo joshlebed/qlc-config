@@ -17,21 +17,11 @@ set -e
 SERVICE_NAME="qlcplus"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 REPO_SERVICE="$(dirname "$0")/qlcplus.service"
-PROJECT_FILE="/opt/qlcplus/projects/spotlight.qxw"
-REPO_PROJECT="$(dirname "$0")/spotlight.qxw"
+PROJECT_FILE="$(dirname "$0")/spotlight.qxw"
 
 case "${1:-help}" in
     install)
         echo "Installing QLC+ service..."
-
-        # Create project directory
-        sudo mkdir -p /opt/qlcplus/projects
-
-        # Symlink project file
-        if [ ! -L "$PROJECT_FILE" ]; then
-            sudo ln -sf "$(realpath "$REPO_PROJECT")" "$PROJECT_FILE"
-            echo "Symlinked project file: $PROJECT_FILE -> $REPO_PROJECT"
-        fi
 
         # Copy service file
         sudo cp "$REPO_SERVICE" "$SERVICE_FILE"

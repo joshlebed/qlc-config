@@ -18,7 +18,7 @@ Group=joshlebed
 #
 # xvfb-run: QLC+ requires a display even headless (Qt app)
 ExecStart=/usr/bin/xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
-    /usr/bin/qlcplus -w -p -o /opt/qlcplus/projects/spotlight.qxw
+    /usr/bin/qlcplus -w -p -o /home/joshlebed/code/qlc-config/spotlight.qxw
 
 # Restart policy
 Restart=on-failure

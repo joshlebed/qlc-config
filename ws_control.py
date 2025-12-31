@@ -22,17 +22,18 @@ from qlcplus import QLCPlusClient
 
 # Function IDs from spotlight.qxw
 MODES = {
-    "off": 0,       # mode_off (Scene)
-    "white": 1,     # mode_white (Scene)
-    "red": 2,       # mode_red (Scene)
-    "yellow": 3,    # mode_yellow (Scene)
-    "fade": 4,      # mode_fade (Chaser: rainbow loop)
-    "orange": 5,    # mode_orange (Scene)
-    "green": 6,     # mode_green (Scene)
-    "cyan": 7,      # mode_cyan (Scene)
-    "blue": 8,      # mode_blue (Scene)
-    "purple": 9,    # mode_purple (Scene)
-    "pink": 10,     # mode_pink (Scene)
+    "off": 0,  # mode_off (Scene)
+    "white": 1,  # mode_white (Scene)
+    "red": 2,  # mode_red (Scene)
+    "yellow": 3,  # mode_yellow (Scene)
+    "fade": 4,  # mode_fade (Chaser: rainbow loop)
+    "orange": 5,  # mode_orange (Scene)
+    "green": 6,  # mode_green (Scene)
+    "cyan": 7,  # mode_cyan (Scene)
+    "blue": 8,  # mode_blue (Scene)
+    "purple": 9,  # mode_purple (Scene)
+    "pink": 10,  # mode_pink (Scene)
+    "reactive": 14,  # mode_reactive_show (Chaser: beat-triggered via MIDI)
 }
 
 

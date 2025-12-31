@@ -11,6 +11,7 @@ from websocket import WebSocket, create_connection
 
 class QLCPlusError(Exception):
     """Exception raised for QLC+ communication errors."""
+
     pass
 
 
