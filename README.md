@@ -373,16 +373,18 @@ uv run pytest
 The `test_data/` directory contains audio files with **precise beat grid data** from rekordbox analysis:
 
 ```bash
-# Run benchmark on a single file
-uv run python -m plp_beat_service.benchmark test_data/narciss_tall_people_140.mp3 -e 140
+# Run benchmark on a single file (--simulate-room required for accurate results)
+uv run python -m plp_beat_service.benchmark test_data/narciss_tall_people_140.mp3 -e 140 --simulate-room
 
 # Run on all test files
 for f in test_data/*.mp3; do
     bpm=$(echo "$f" | grep -oP '\d+(?=\.mp3)')
     echo "Testing: $f (expected: $bpm BPM)"
-    uv run python -m plp_beat_service.benchmark "$f" -e "$bpm"
+    uv run python -m plp_beat_service.benchmark "$f" -e "$bpm" --simulate-room
 done
 ```
+
+**Note**: The `--simulate-room` flag is required for file-based benchmarks to match live microphone performance. It applies room acoustics simulation (lowpass filter, compression, level reduction) that compensates for the difference between direct file input and mic capture.
 
 Each track has a JSON file with ground-truth beat times:
 ```json
