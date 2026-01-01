@@ -14,7 +14,7 @@ class StreamingTempogram:
         self,
         samplerate: int = 44100,
         hop_length: int = 512,
-        win_length: int = 384,  # ~8.9 seconds at 512 hop
+        win_length: int = 768,  # ~8.9 seconds at 512 block size
         tempo_min: int = 115,
         tempo_max: int = 165,
     ):
@@ -29,8 +29,9 @@ class StreamingTempogram:
         # Use ceil for min (faster tempo = smaller lag) to not exceed tempo_max
         # Use floor for max (slower tempo = larger lag) to not go below tempo_min
         import math
-        self.lag_min = int(math.ceil(60 * self.sr_tempo / tempo_max))
-        self.lag_max = int(math.floor(60 * self.sr_tempo / tempo_min))
+
+        self.lag_min = math.ceil(60 * self.sr_tempo / tempo_max)
+        self.lag_max = math.floor(60 * self.sr_tempo / tempo_min)
 
         # State
         self.onset_buffer: np.ndarray = np.zeros(win_length)
@@ -75,7 +76,42 @@ class StreamingTempogram:
         tempo_prior = np.maximum(tempo_prior, 0.7)
         tempogram = tempogram * tempo_prior
 
+        # Apply octave penalty to disambiguate half/double-time
+        tempogram = self._apply_octave_penalty(tempos, tempogram)
+
         return tempos, tempogram
+
+    def _apply_octave_penalty(self, tempos: np.ndarray, tempogram: np.ndarray) -> np.ndarray:
+        """
+        Penalize tempos whose half/double time is also strong.
+
+        If 120 BPM and 60 BPM are both strong, prefer 120 BPM.
+        If 120 BPM and 240 BPM are both strong, prefer 120 BPM.
+        """
+        result = tempogram.copy()
+
+        for i, tempo in enumerate(tempos):
+            # Check half-time
+            half_tempo = tempo / 2
+            if self.tempo_min <= half_tempo <= self.tempo_max:
+                half_idx = np.argmin(np.abs(tempos - half_tempo))
+                if np.abs(tempos[half_idx] - half_tempo) < 3.0:  # Within 3 BPM
+                    half_strength = tempogram[half_idx]
+                    # If half-time is nearly as strong, this might be double-time
+                    if half_strength > tempogram[i] * 0.6:
+                        result[i] *= 0.5  # Penalize potential double-time
+
+            # Check double-time
+            double_tempo = tempo * 2
+            if self.tempo_min <= double_tempo <= self.tempo_max:
+                double_idx = np.argmin(np.abs(tempos - double_tempo))
+                if np.abs(tempos[double_idx] - double_tempo) < 3.0:
+                    double_strength = tempogram[double_idx]
+                    # If double-time has significant energy, boost this tempo
+                    if double_strength > tempogram[i] * 0.4:
+                        result[i] *= 1.3  # Boost the "normal" tempo
+
+        return result
 
     def estimate_tempo(self) -> tuple[float, float]:
         """

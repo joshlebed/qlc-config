@@ -120,6 +120,29 @@ class PLPTracker:
         self.pulse_history.append(pulse)
         return pulse
 
+    def predict_frames_to_beat(self) -> float:
+        """
+        Predict frames until next beat based on current phase.
+
+        Returns:
+            Number of frames until phase wraps to 0 (beat position).
+            Returns infinity if tempo is not established.
+        """
+        if self.current_tempo <= 0:
+            return float("inf")
+
+        # Beat period in frames
+        beat_period_frames = self.sr_tempo * 60 / self.current_tempo
+        phase_increment = 2 * np.pi / beat_period_frames
+
+        # Phase wraps at 2*pi, beat occurs at phase=0
+        # Calculate frames until phase wraps
+        if phase_increment <= 0:
+            return float("inf")
+
+        frames_to_beat = (2 * np.pi - self.phase) / phase_increment
+        return float(frames_to_beat)
+
     def get_pulse_curve(self, n_frames: int = 64) -> np.ndarray:
         """Get recent pulse curve for peak detection."""
         if len(self.pulse_history) < n_frames:

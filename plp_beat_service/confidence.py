@@ -19,18 +19,23 @@ class ConfidenceTracker:
         self,
         pulse_window: int = 64,
         tempo_window: int = 16,
-        smoothing: float = 0.1,
+        smoothing_up: float = 0.1,  # Slow rise
+        smoothing_down: float = 0.3,  # Fast fall (for breakdowns)
     ):
         self.pulse_window = pulse_window
         self.tempo_window = tempo_window
-        self.smoothing = smoothing
+        self.smoothing_up = smoothing_up
+        self.smoothing_down = smoothing_down
 
         # State
         self.pulse_history: deque[float] = deque(maxlen=pulse_window)
         self.tempo_history: deque[float] = deque(maxlen=tempo_window)
+        self.onset_history: deque[float] = deque(maxlen=32)  # Track recent onset energy
         self.confidence: float = 0.0
 
-    def update(self, pulse_peak: float, tempo: float, tempo_strength: float) -> float:
+    def update(
+        self, pulse_peak: float, tempo: float, tempo_strength: float, onset_strength: float = 0.0
+    ) -> float:
         """
         Update confidence signal.
 
@@ -38,11 +43,13 @@ class ConfidenceTracker:
             pulse_peak: Current pulse curve peak value
             tempo: Current tempo estimate (BPM)
             tempo_strength: Raw tempo estimate confidence
+            onset_strength: Current onset envelope value (audio energy)
 
         Returns:
             Smoothed confidence value (0-1)
         """
         self.pulse_history.append(pulse_peak)
+        self.onset_history.append(onset_strength)
         if tempo > 0:
             self.tempo_history.append(tempo)
 
@@ -70,18 +77,44 @@ class ConfidenceTracker:
         else:
             tempo_confidence = 0.0
 
-        # Component 3: Raw tempo strength
+        # Component 3: Onset energy (adaptive threshold for breakdown detection)
+        if len(self.onset_history) >= 16:
+            recent_onset = float(np.mean(list(self.onset_history)[-8:]))
+            # Use peak of history as reference (adapts to mic gain / room levels)
+            peak_onset = float(np.percentile(list(self.onset_history), 90))
+            if peak_onset > 0.01:  # Have some reference
+                # If recent is near peak level, high confidence
+                # If recent is much lower than peak, breakdown
+                ratio = recent_onset / peak_onset
+                onset_confidence = float(np.clip(ratio * 1.5, 0, 1))  # Scale up slightly
+            else:
+                onset_confidence = 0.5  # No reference yet
+        else:
+            onset_confidence = 0.5  # Neutral early on
+
+        # Component 4: Raw tempo strength
         raw_confidence = tempo_strength
 
-        # Combine components
-        combined = pulse_confidence * 0.3 + tempo_confidence * 0.4 + raw_confidence * 0.3
+        # Combine components (onset energy now weighted heavily)
+        combined = (
+            pulse_confidence * 0.2
+            + tempo_confidence * 0.2
+            + onset_confidence * 0.4  # Heavily weight actual audio energy
+            + raw_confidence * 0.2
+        )
 
-        # Smooth the confidence signal (slow-moving)
-        self.confidence = self.confidence * (1 - self.smoothing) + combined * self.smoothing
+        # Asymmetric smoothing: fast fall, slow rise
+        if combined < self.confidence:
+            smoothing = self.smoothing_down  # Fast fall for breakdowns
+        else:
+            smoothing = self.smoothing_up  # Slow rise for stability
+
+        self.confidence = self.confidence * (1 - smoothing) + combined * smoothing
 
         # Store components for debugging
         self.last_pulse_confidence = pulse_confidence
         self.last_tempo_confidence = tempo_confidence
+        self.last_onset_confidence = onset_confidence
         self.last_raw_confidence = raw_confidence
         self.last_combined = combined
 
@@ -92,6 +125,7 @@ class ConfidenceTracker:
         return {
             "pulse": getattr(self, "last_pulse_confidence", 0.0),
             "tempo": getattr(self, "last_tempo_confidence", 0.0),
+            "onset": getattr(self, "last_onset_confidence", 0.0),
             "raw": getattr(self, "last_raw_confidence", 0.0),
             "combined": getattr(self, "last_combined", 0.0),
             "smoothed": self.confidence,
@@ -105,4 +139,5 @@ class ConfidenceTracker:
         """Reset confidence tracker."""
         self.pulse_history.clear()
         self.tempo_history.clear()
+        self.onset_history.clear()
         self.confidence = 0.0

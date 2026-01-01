@@ -3,7 +3,6 @@
 import argparse
 import json
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -16,6 +15,100 @@ from plp_beat_service.peaks import PeakPicker
 from plp_beat_service.plp import PLPTracker
 from plp_beat_service.state import BeatStateMachine
 from plp_beat_service.tempogram import StreamingTempogram
+
+
+def analyze_interval_distribution(
+    beat_times: list[float],
+    detected_bpm: float | None = None,
+    tolerance: float = 0.15,  # 15% tolerance for "on beat"
+) -> dict[str, Any]:
+    """
+    Analyze the distribution of beat intervals normalized to beat period.
+
+    A perfect beat tracker would have all intervals at exactly 1.0 beat periods.
+    This function measures how well intervals cluster at integer beat multiples.
+
+    Args:
+        beat_times: List of beat timestamps in seconds
+        detected_bpm: BPM to use for normalization (if None, uses median interval)
+        tolerance: Tolerance for considering an interval "on beat" (0.15 = ±15%)
+
+    Returns:
+        Dictionary with interval distribution metrics
+    """
+    if len(beat_times) < 2:
+        return {
+            "total_intervals": 0,
+            "normalized_intervals": [],
+            "on_1beat_pct": 0.0,
+            "on_2beat_pct": 0.0,
+            "half_beat_pct": 0.0,
+            "interval_std_beats": 0.0,
+            "histogram": {},
+        }
+
+    intervals_sec = np.diff(beat_times)
+
+    # Determine beat period for normalization
+    if detected_bpm and detected_bpm > 0:
+        beat_period = 60.0 / detected_bpm
+    else:
+        # Use median interval as beat period estimate
+        beat_period = float(np.median(intervals_sec))
+
+    # Normalize intervals to beat periods
+    normalized = intervals_sec / beat_period
+
+    # Calculate distribution metrics
+    total = len(normalized)
+
+    # Count intervals at each beat multiple (within tolerance)
+    on_1beat = np.sum((normalized >= 1.0 - tolerance) & (normalized <= 1.0 + tolerance))
+    on_2beat = np.sum((normalized >= 2.0 - tolerance) & (normalized <= 2.0 + tolerance))
+    half_beat = np.sum((normalized >= 0.5 - tolerance) & (normalized <= 0.5 + tolerance))
+    on_3beat = np.sum((normalized >= 3.0 - tolerance) & (normalized <= 3.0 + tolerance))
+
+    # Build histogram buckets (0.25 beat resolution)
+    histogram: dict[str, int] = {}
+    for bucket in [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0]:
+        bucket_tolerance = 0.125  # Half of 0.25 resolution
+        count = int(
+            np.sum(
+                (normalized >= bucket - bucket_tolerance) & (normalized < bucket + bucket_tolerance)
+            )
+        )
+        if count > 0:
+            histogram[f"{bucket:.2f}"] = count
+
+    # Count outliers (outside expected range)
+    outliers = int(np.sum((normalized < 0.25) | (normalized > 4.0)))
+    if outliers > 0:
+        histogram["outliers"] = outliers
+
+    # Calculate core quality (excluding outliers and long gaps)
+    core_mask = (normalized >= 0.5) & (normalized <= 2.5)
+    core_intervals = normalized[core_mask]
+    core_on_1beat = np.sum(
+        (core_intervals >= 1.0 - tolerance) & (core_intervals <= 1.0 + tolerance)
+    )
+    core_total = len(core_intervals)
+
+    return {
+        "total_intervals": total,
+        "beat_period_ms": beat_period * 1000,
+        "normalized_intervals": normalized.tolist(),
+        "on_1beat_pct": 100 * on_1beat / total if total > 0 else 0.0,
+        "on_2beat_pct": 100 * on_2beat / total if total > 0 else 0.0,
+        "on_3beat_pct": 100 * on_3beat / total if total > 0 else 0.0,
+        "half_beat_pct": 100 * half_beat / total if total > 0 else 0.0,
+        "interval_mean_beats": float(np.mean(normalized)),
+        "interval_std_beats": float(np.std(normalized)),
+        # Core quality: 1-beat accuracy excluding long gaps
+        "core_1beat_pct": 100 * core_on_1beat / core_total if core_total > 0 else 0.0,
+        "core_std_beats": float(np.std(core_intervals)) if core_total > 0 else 0.0,
+        "core_count": core_total,
+        "histogram": histogram,
+    }
 
 
 def benchmark(
@@ -45,7 +138,7 @@ def benchmark(
         Dictionary with benchmark results
     """
     # Load audio
-    source = FileAudioSource(file_path, simulate_room=simulate_room)
+    source = FileAudioSource(file_path, block_size=BLOCK_SIZE, simulate_room=simulate_room)
     if verbose:
         print(f"Loaded: {file_path}")
         print(f"Duration: {source.duration:.1f}s")
@@ -119,20 +212,16 @@ def benchmark(
             pulse = plp.update(bpm, strength, onset[0])
 
             # Check for raw peak (pass onset and phase for combined detection)
-            beat_detected = peak_picker.update(
-                pulse, bpm, onset_strength=onset[0], phase=plp.phase
-            )
+            beat_detected = peak_picker.update(pulse, bpm, onset_strength=onset[0], phase=plp.phase)
             if beat_detected:
                 raw_beat_count += 1
 
-            # Update confidence
-            confidence = confidence_tracker.update(pulse, bpm, strength)
+            # Update confidence (include onset energy for breakdown detection)
+            confidence = confidence_tracker.update(pulse, bpm, strength, onset[0])
             confidence_samples.append(confidence)
 
             if debug and beat_detected:
-                print(
-                    f"Frame {frame_count}: beat detected, conf={confidence:.3f}, bpm={bpm:.1f}"
-                )
+                print(f"Frame {frame_count}: beat detected, conf={confidence:.3f}, bpm={bpm:.1f}")
 
         # Current simulated time for this frame
         current_time = frame_count * BLOCK_SIZE / source.sr
@@ -186,6 +275,7 @@ def benchmark(
     else:
         jitter_ms = 0.0
         mean_interval_ms = 0.0
+        intervals = np.array([])
 
     elapsed = time.time() - start_time
 
@@ -233,6 +323,9 @@ def benchmark(
     expected_beats = int(source.duration * detected_bpm / 60) if detected_bpm > 0 else 0
     emitted_beat_count = len(beat_times)
 
+    # Analyze interval distribution (normalized to beat period)
+    interval_analysis = analyze_interval_distribution(beat_times, detected_bpm=detected_bpm)
+
     results: dict[str, Any] = {
         "file": file_path,
         "duration_s": source.duration,
@@ -249,6 +342,7 @@ def benchmark(
         "jitter_ms": jitter_ms,
         "mean_interval_ms": mean_interval_ms,
         "state_counts": state_counts,
+        "interval_analysis": interval_analysis,
     }
 
     if expected_bpm is not None:
@@ -286,6 +380,40 @@ def benchmark(
                 f"Confidence: min={min(confidence_samples):.3f}, max={max(confidence_samples):.3f}, "
                 f"mean={np.mean(confidence_samples):.3f}"
             )
+
+        # Interval distribution analysis
+        if interval_analysis["total_intervals"] > 0:
+            print("")
+            print("Interval Distribution (normalized to beat period):")
+            print(
+                f"  1-beat: {interval_analysis['on_1beat_pct']:.1f}% | "
+                f"2-beat: {interval_analysis['on_2beat_pct']:.1f}% | "
+                f"half-beat: {interval_analysis['half_beat_pct']:.1f}%"
+            )
+            print(
+                f"  Mean: {interval_analysis['interval_mean_beats']:.2f} beats | "
+                f"Std: {interval_analysis['interval_std_beats']:.3f} beats"
+            )
+            # Core quality (excluding outliers) - this is the key metric
+            core_std_ms = interval_analysis["core_std_beats"] * interval_analysis["beat_period_ms"]
+            print(
+                f"  Core quality (0.5-2.5 beats only): "
+                f"{interval_analysis['core_1beat_pct']:.1f}% on-beat, "
+                f"std={core_std_ms:.1f}ms"
+            )
+            # Show histogram as ASCII bar chart
+            hist = interval_analysis["histogram"]
+            if hist:
+                max_count = max(hist.values()) if hist else 1
+                print("  Histogram:")
+                for bucket in sorted(
+                    hist.keys(), key=lambda x: float(x) if x != "outliers" else 99
+                ):
+                    count = hist[bucket]
+                    bar_len = int(30 * count / max_count)
+                    pct = 100 * count / interval_analysis["total_intervals"]
+                    print(f"    {bucket:>7}: {'█' * bar_len} {count} ({pct:.1f}%)")
+
         print(f"{'=' * 50}")
 
     return results
@@ -313,13 +441,15 @@ Examples:
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
     parser.add_argument("--debug", "-d", action="store_true", help="Print debug info")
     parser.add_argument(
-        "--record", "-r",
+        "--record",
+        "-r",
         type=str,
         metavar="FILE",
         help="Save frame data to JSONL file for visualization comparison",
     )
     parser.add_argument(
-        "--simulate-room", "-s",
+        "--simulate-room",
+        "-s",
         action="store_true",
         help="Simulate room acoustics (lowpass + compression + level reduction) for mic-like behavior",
     )

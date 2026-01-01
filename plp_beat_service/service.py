@@ -73,9 +73,7 @@ class PLPBeatService:
         self._debug_frame = 0
 
         # Pipeline components
-        self.onset_tracker = OnsetEnvelopeTracker(
-            samplerate=samplerate, hop_length=BLOCK_SIZE
-        )
+        self.onset_tracker = OnsetEnvelopeTracker(samplerate=samplerate, hop_length=BLOCK_SIZE)
         self.tempogram = StreamingTempogram(
             samplerate=samplerate,
             hop_length=BLOCK_SIZE,
@@ -124,9 +122,7 @@ class PLPBeatService:
         if enable_debug_server:
             from plp_beat_service.debug_server import DebugWebSocket
 
-            self.debug_ws = DebugWebSocket(
-                ws_port=debug_ws_port, http_port=debug_http_port
-            )
+            self.debug_ws = DebugWebSocket(ws_port=debug_ws_port, http_port=debug_http_port)
         else:
             self.debug_ws = None
 
@@ -206,8 +202,8 @@ class PLPBeatService:
                 pulse, bpm, onset_strength=onset_val, phase=self.plp.phase
             )
 
-            # Confidence tracking
-            confidence = self.confidence_tracker.update(pulse, bpm, strength)
+            # Confidence tracking (include onset energy for breakdown detection)
+            confidence = self.confidence_tracker.update(pulse, bpm, strength, onset_val)
             self.current_confidence = confidence
 
         # Debug logging every 20 frames (~1 second)
@@ -310,7 +306,10 @@ class PLPBeatService:
             self.beat_count += 1
 
             # Log each beat
-            print(f"[beat] #{self.beat_count} at {self.current_bpm:.1f} BPM (conf: {confidence:.0%})", flush=True)
+            print(
+                f"[beat] #{self.beat_count} at {self.current_bpm:.1f} BPM (conf: {confidence:.0%})",
+                flush=True,
+            )
 
             if self.osc:
                 self.osc.send_beat()
@@ -334,7 +333,9 @@ class PLPBeatService:
             mode = "Note" if self.midi_note_mode else "Clock (24 PPQN)"
             print(f"  MIDI: {self.midi.port_name} ({mode})")
         if self.debug_ws:
-            print(f"  Debug: WebSocket on port {self.debug_ws.ws_port}, HTTP on port {self.debug_ws.http_port}")
+            print(
+                f"  Debug: WebSocket on port {self.debug_ws.ws_port}, HTTP on port {self.debug_ws.http_port}"
+            )
         print("Press Ctrl+C to stop")
         print()
 

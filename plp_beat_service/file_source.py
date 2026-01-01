@@ -40,7 +40,7 @@ class FileAudioSource:
             # 1. Lowpass at 4kHz to simulate speaker/room response
             nyq = samplerate / 2
             cutoff = 4000 / nyq
-            b, a = signal.butter(2, cutoff, btype='low')
+            b, a = signal.butter(2, cutoff, btype="low")
             self.samples = signal.filtfilt(b, a, self.samples)
 
             # 2. Soft compression to reduce transient peaks (simulates room reverb)

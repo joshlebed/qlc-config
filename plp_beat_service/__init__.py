@@ -10,4 +10,4 @@ try:
 except ImportError:
     MIDIOutput = None  # type: ignore
 
-__all__ = ["PLPBeatService", "OSCOutput", "MIDIOutput", "BeatEvent", "LockState"]
+__all__ = ["BeatEvent", "LockState", "MIDIOutput", "OSCOutput", "PLPBeatService"]

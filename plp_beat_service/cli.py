@@ -53,12 +53,14 @@ Debug server:
 
     # Audio device
     parser.add_argument(
-        "-l", "--list-devices",
+        "-l",
+        "--list-devices",
         action="store_true",
         help="List available audio input devices",
     )
     parser.add_argument(
-        "-d", "--device",
+        "-d",
+        "--device",
         type=int,
         default=None,
         help="Audio device index (use -l to list)",
@@ -156,7 +158,8 @@ Debug server:
 
     # Recording
     parser.add_argument(
-        "--record", "-r",
+        "--record",
+        "-r",
         type=str,
         metavar="FILE",
         help="Record frame data to JSONL file for comparison with benchmark",
