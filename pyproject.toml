@@ -34,7 +34,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.8.0",
-    "mypy>=1.13.0",
+    "ty>=0.0.1a6",
 ]
 osc = [
     "python-osc>=1.8.0",
@@ -81,21 +81,6 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-
-# Mypy configuration (type checking)
-[tool.mypy]
-python_version = "3.10"
-strict = true
-warn_return_any = true
-warn_unused_ignores = true
-
-[[tool.mypy.overrides]]
-module = "websocket.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["sounddevice.*", "librosa.*", "pythonosc.*", "scipy.*", "websockets.*"]
-ignore_missing_imports = true
 
 # Pytest configuration
 [tool.pytest.ini_options]

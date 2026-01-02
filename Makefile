@@ -99,7 +99,7 @@ help-full: help
 	@echo "  test           Run pytest"
 	@echo "  lint           Run ruff linter"
 	@echo "  format         Format code with ruff"
-	@echo "  check          Run lint + mypy"
+	@echo "  check          Run lint + ty type checker"
 	@echo "  clean          Remove cache files"
 
 # =============================================================================
@@ -335,7 +335,7 @@ format:
 	uv run ruff check --fix .
 
 check: lint
-	uv run mypy qlcplus/ plp_beat_service/
+	uv run ty check qlcplus/ plp_beat_service/
 
 # =============================================================================
 # Legacy Audio Reactive (direct DMX - rarely used)
@@ -355,4 +355,4 @@ audio-color:
 # =============================================================================
 
 clean:
-	rm -rf .venv __pycache__ qlcplus/__pycache__ plp_beat_service/__pycache__ .pytest_cache .mypy_cache .ruff_cache
+	rm -rf .venv __pycache__ qlcplus/__pycache__ plp_beat_service/__pycache__ .pytest_cache .ty .ruff_cache
