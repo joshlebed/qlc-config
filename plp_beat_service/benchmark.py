@@ -159,12 +159,18 @@ def benchmark(
         tempo_min=bpm_min,
         tempo_max=bpm_max,
     )
+    confidence_tracker = ConfidenceTracker()
+
+    # Create prediction callback for confidence tracking
+    def on_prediction(predicted_time: float, phase: float) -> None:
+        confidence_tracker.record_prediction(predicted_time, phase)
+
     peak_picker = PeakPicker(
         samplerate=source.sr,
         hop_length=BLOCK_SIZE,
         tempo_max=bpm_max,
+        on_prediction=on_prediction,
     )
-    confidence_tracker = ConfidenceTracker()
     state_machine = BeatStateMachine()
 
     # Open recording file if requested
@@ -198,9 +204,17 @@ def benchmark(
     confidence_samples: list[float] = []  # For debug
 
     for chunk in source:
-        onset = onset_tracker.process(chunk)
-        tempogram.update(onset[0])
+        # Current simulated time for this frame (compute early for record_hit)
+        current_time = frame_count * BLOCK_SIZE / source.sr
+
+        # Onset envelope - now returns (onset_array, rms)
+        onset_result, rms = onset_tracker.process(chunk)
+        onset_val = float(onset_result[0])
+        tempogram.update(onset_val)
         bpm, strength = tempogram.estimate_tempo()
+
+        # Track peak RMS for silence detection
+        peak_rms = onset_tracker.get_peak_rms()
 
         # Default values for when tempo is not valid
         pulse = 0.0
@@ -209,22 +223,31 @@ def benchmark(
 
         if bpm > 0 and strength > 0.1:
             bpm_estimates.append(bpm)
-            pulse = plp.update(bpm, strength, onset[0])
+            pulse = plp.update(bpm, strength, onset_val)
 
             # Check for raw peak (pass onset and phase for combined detection)
-            beat_detected = peak_picker.update(pulse, bpm, onset_strength=onset[0], phase=plp.phase)
+            beat_detected = peak_picker.update(
+                pulse, bpm, onset_strength=onset_val, phase=plp.phase, current_time=current_time
+            )
             if beat_detected:
                 raw_beat_count += 1
+                # Record hit for alignment-based confidence
+                phase_error = abs(plp.phase)
+                confidence_tracker.record_hit(
+                    onset_time=current_time,
+                    onset_strength=onset_val,
+                    phase_error=phase_error,
+                )
 
-            # Update confidence (include onset energy for breakdown detection)
-            confidence = confidence_tracker.update(pulse, bpm, strength, onset[0])
+            # Update confidence (include RMS for silence detection)
+            confidence = confidence_tracker.update(
+                pulse, bpm, strength, onset_val,
+                rms=rms, peak_rms=peak_rms,
+            )
             confidence_samples.append(confidence)
 
             if debug and beat_detected:
                 print(f"Frame {frame_count}: beat detected, conf={confidence:.3f}, bpm={bpm:.1f}")
-
-        # Current simulated time for this frame
-        current_time = frame_count * BLOCK_SIZE / source.sr
 
         # State machine decides if we should emit a beat
         state, should_emit = state_machine.update(
@@ -248,7 +271,7 @@ def benchmark(
                 "type": "frame",
                 "seq": frame_count,
                 "ts": current_time,
-                "onset": float(onset[0]),
+                "onset": float(onset_val),
                 "pulse": float(pulse),
                 "phase": float(plp.phase),
                 "bpm": float(locked_bpm),

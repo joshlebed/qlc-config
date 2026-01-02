@@ -211,11 +211,24 @@ class PLPBeatService:
 
             # Peak detection - pass onset and phase for combined detection
             beat_detected = self.peak_picker.update(
-                pulse, bpm, onset_strength=onset_val, phase=self.plp.phase
+                pulse, bpm, onset_strength=onset_val, phase=self.plp.phase, current_time=now
             )
 
+            # Record hit if beat detected (for alignment-based confidence)
+            if beat_detected:
+                phase_error = abs(self.plp.phase)  # Phase error from ideal position
+                self.confidence_tracker.record_hit(
+                    onset_time=now,
+                    onset_strength=onset_val,
+                    phase_error=phase_error,
+                )
+
             # Confidence tracking (include onset energy for breakdown detection)
-            confidence = self.confidence_tracker.update(pulse, bpm, strength, onset_val)
+            confidence = self.confidence_tracker.update(
+                pulse, bpm, strength, onset_val,
+                rms=self._current_rms,
+                peak_rms=self._peak_rms,
+            )
             self.current_confidence = confidence
 
         # Debug logging every 20 frames (~1 second)
@@ -282,6 +295,7 @@ class PLPBeatService:
                     "state": state.value,
                     "beats": self.beat_count,
                     # Diagnostic data
+                    "conf_hit_rate": conf_components["hit_rate"],
                     "conf_pulse": conf_components["pulse"],
                     "conf_tempo": conf_components["tempo"],
                     "conf_raw": conf_components["raw"],
