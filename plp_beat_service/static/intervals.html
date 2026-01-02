@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLP Beat Tracker - Interval Distribution</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #111;
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #aaa;
+        }
+        .nav {
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        .nav a {
+            color: #4af;
+            margin-right: 20px;
+        }
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .status-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .status-value.good { color: #4f4; }
+        .status-value.warn { color: #fa4; }
+        .status-value.bad { color: #f44; }
+        .status-value.neutral { color: #4af; }
+
+        .connection {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .connection.connected { background: #143; color: #4f4; }
+        .connection.disconnected { background: #411; color: #f44; }
+
+        .histogram-container {
+            margin: 20px 0;
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .histogram-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+        .histogram {
+            display: flex;
+            align-items: flex-end;
+            height: 200px;
+            gap: 4px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+        .bar-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 60px;
+        }
+        .bar {
+            width: 100%;
+            background: #4af;
+            border-radius: 2px 2px 0 0;
+            transition: height 0.3s ease;
+            min-height: 2px;
+        }
+        .bar.target { background: #4f4; }
+        .bar.off { background: #fa4; }
+        .bar.outlier { background: #f44; }
+        .bar-label {
+            font-size: 10px;
+            color: #666;
+            margin-top: 5px;
+            text-align: center;
+        }
+        .bar-count {
+            font-size: 10px;
+            color: #888;
+            margin-bottom: 3px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric-card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .metric-title {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .metric-sub {
+            font-size: 11px;
+            color: #666;
+            margin-top: 3px;
+        }
+
+        .recent-intervals {
+            margin: 20px 0;
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .recent-title {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .interval-item {
+            font-size: 12px;
+            padding: 3px 0;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+        }
+        .interval-item.good { color: #4f4; }
+        .interval-item.off { color: #fa4; }
+        .interval-item.bad { color: #f44; }
+
+        .controls {
+            margin: 20px 0;
+        }
+        .controls button {
+            background: #333;
+            border: none;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-family: inherit;
+        }
+        .controls button:hover {
+            background: #444;
+        }
+
+        .info {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>PLP Beat Tracker - Interval Distribution</h1>
+
+    <div class="nav">
+        <a href="debug.html">Debug Console</a>
+        <a href="compare.html">Compare Recordings</a>
+        <a href="intervals.html">Interval Analysis</a>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="status-label">Connection</span>
+            <span class="connection disconnected" id="connectionStatus">Disconnected</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">BPM</span>
+            <span class="status-value neutral" id="bpmValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">State</span>
+            <span class="status-value" id="stateValue">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Total Beats</span>
+            <span class="status-value neutral" id="beatCount">0</span>
+        </div>
+    </div>
+
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-title">1-Beat Accuracy</div>
+            <div class="metric-value good" id="onBeatPct">--%</div>
+            <div class="metric-sub">Intervals within ±15% of 1 beat</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Core Jitter</div>
+            <div class="metric-value neutral" id="coreJitter">-- ms</div>
+            <div class="metric-sub">Std dev of core intervals (0.5-2.5 beats)</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Mean Interval</div>
+            <div class="metric-value neutral" id="meanInterval">-- beats</div>
+            <div class="metric-sub">Target: 1.00 beats</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Missed Beats</div>
+            <div class="metric-value" id="missedPct">--%</div>
+            <div class="metric-sub">Intervals > 1.5 beats</div>
+        </div>
+    </div>
+
+    <div class="histogram-container">
+        <div class="histogram-title">Beat Interval Distribution (normalized to beat period)</div>
+        <div class="histogram" id="histogram"></div>
+    </div>
+
+    <div class="recent-intervals">
+        <div class="recent-title">Recent Intervals (newest first)</div>
+        <div id="recentList"></div>
+    </div>
+
+    <div class="controls">
+        <button onclick="resetStats()">Reset Stats</button>
+        <button onclick="togglePause()">Pause/Resume</button>
+    </div>
+
+    <div class="info">
+        <p>Connect to: ws://<span id="wsHost"></span>:9998</p>
+        <p>Target: 100% of intervals at exactly 1.0 beats (green bar)</p>
+    </div>
+
+    <script>
+        // Auto-detect WebSocket host
+        const wsHost = window.location.hostname || 'localhost';
+        document.getElementById('wsHost').textContent = wsHost;
+
+        // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const bpmValue = document.getElementById('bpmValue');
+        const stateValue = document.getElementById('stateValue');
+        const beatCount = document.getElementById('beatCount');
+        const onBeatPct = document.getElementById('onBeatPct');
+        const coreJitter = document.getElementById('coreJitter');
+        const meanInterval = document.getElementById('meanInterval');
+        const missedPct = document.getElementById('missedPct');
+        const histogramEl = document.getElementById('histogram');
+        const recentList = document.getElementById('recentList');
+
+        // State
+        let beatTimes = [];
+        let intervals = [];  // Normalized to beat period
+        let currentBpm = 0;
+        let paused = false;
+
+        // Histogram buckets
+        const buckets = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0];
+        const bucketCounts = {};
+        buckets.forEach(b => bucketCounts[b] = 0);
+        bucketCounts['outlier'] = 0;
+
+        // Initialize histogram bars
+        function initHistogram() {
+            histogramEl.innerHTML = '';
+            buckets.forEach(bucket => {
+                const container = document.createElement('div');
+                container.className = 'bar-container';
+                container.innerHTML = `
+                    <div class="bar-count" id="count-${bucket}">0</div>
+                    <div class="bar" id="bar-${bucket}" style="height: 2px;"></div>
+                    <div class="bar-label">${bucket.toFixed(2)}</div>
+                `;
+                histogramEl.appendChild(container);
+            });
+            // Add outlier bar
+            const outlierContainer = document.createElement('div');
+            outlierContainer.className = 'bar-container';
+            outlierContainer.innerHTML = `
+                <div class="bar-count" id="count-outlier">0</div>
+                <div class="bar outlier" id="bar-outlier" style="height: 2px;"></div>
+                <div class="bar-label">>4.0</div>
+            `;
+            histogramEl.appendChild(outlierContainer);
+        }
+
+        function updateHistogram() {
+            const maxCount = Math.max(...Object.values(bucketCounts), 1);
+
+            buckets.forEach(bucket => {
+                const count = bucketCounts[bucket];
+                const bar = document.getElementById(`bar-${bucket}`);
+                const countEl = document.getElementById(`count-${bucket}`);
+
+                const height = Math.max(2, (count / maxCount) * 180);
+                bar.style.height = `${height}px`;
+                countEl.textContent = count;
+
+                // Color based on bucket
+                if (bucket === 1.0) {
+                    bar.className = 'bar target';
+                } else if (bucket >= 0.75 && bucket <= 1.25) {
+                    bar.className = 'bar';
+                } else {
+                    bar.className = 'bar off';
+                }
+            });
+
+            // Outlier bar
+            const outlierCount = bucketCounts['outlier'];
+            const outlierBar = document.getElementById('bar-outlier');
+            const outlierCountEl = document.getElementById('count-outlier');
+            outlierBar.style.height = `${Math.max(2, (outlierCount / maxCount) * 180)}px`;
+            outlierCountEl.textContent = outlierCount;
+        }
+
+        function addInterval(normalizedInterval) {
+            intervals.push(normalizedInterval);
+
+            // Classify into bucket
+            let found = false;
+            for (const bucket of buckets) {
+                if (normalizedInterval >= bucket - 0.125 && normalizedInterval < bucket + 0.125) {
+                    bucketCounts[bucket]++;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if (normalizedInterval > 4.0 || normalizedInterval < 0.25) {
+                    bucketCounts['outlier']++;
+                }
+            }
+
+            // Update recent list
+            const item = document.createElement('div');
+            const ms = normalizedInterval * (60000 / currentBpm);
+            let className = 'interval-item';
+            if (normalizedInterval >= 0.85 && normalizedInterval <= 1.15) {
+                className += ' good';
+            } else if (normalizedInterval >= 0.5 && normalizedInterval <= 2.5) {
+                className += ' off';
+            } else {
+                className += ' bad';
+            }
+            item.className = className;
+            item.innerHTML = `
+                <span>${normalizedInterval.toFixed(3)} beats</span>
+                <span>${ms.toFixed(0)} ms</span>
+            `;
+            recentList.insertBefore(item, recentList.firstChild);
+
+            // Keep only last 50 items
+            while (recentList.children.length > 50) {
+                recentList.removeChild(recentList.lastChild);
+            }
+
+            updateHistogram();
+            updateMetrics();
+        }
+
+        function updateMetrics() {
+            if (intervals.length < 2) return;
+
+            const total = intervals.length;
+            const tolerance = 0.15;
+
+            // 1-beat accuracy
+            const onBeat = intervals.filter(i => i >= 1 - tolerance && i <= 1 + tolerance).length;
+            const onBeatPercent = (100 * onBeat / total).toFixed(1);
+            onBeatPct.textContent = `${onBeatPercent}%`;
+            onBeatPct.className = 'metric-value ' + (onBeatPercent >= 80 ? 'good' : onBeatPercent >= 60 ? 'warn' : 'bad');
+
+            // Core jitter (0.5-2.5 beats only)
+            const coreIntervals = intervals.filter(i => i >= 0.5 && i <= 2.5);
+            if (coreIntervals.length > 1) {
+                const mean = coreIntervals.reduce((a, b) => a + b, 0) / coreIntervals.length;
+                const variance = coreIntervals.reduce((sum, i) => sum + Math.pow(i - mean, 2), 0) / coreIntervals.length;
+                const stdBeats = Math.sqrt(variance);
+                const stdMs = stdBeats * (60000 / currentBpm);
+                coreJitter.textContent = `${stdMs.toFixed(1)} ms`;
+                coreJitter.className = 'metric-value ' + (stdMs < 50 ? 'good' : stdMs < 100 ? 'warn' : 'bad');
+            }
+
+            // Mean interval
+            const mean = intervals.reduce((a, b) => a + b, 0) / total;
+            meanInterval.textContent = `${mean.toFixed(3)} beats`;
+            meanInterval.className = 'metric-value ' + (Math.abs(mean - 1) < 0.05 ? 'good' : Math.abs(mean - 1) < 0.1 ? 'warn' : 'bad');
+
+            // Missed beats (intervals > 1.5)
+            const missed = intervals.filter(i => i > 1.5).length;
+            const missedPercent = (100 * missed / total).toFixed(1);
+            missedPct.textContent = `${missedPercent}%`;
+            missedPct.className = 'metric-value ' + (missedPercent < 5 ? 'good' : missedPercent < 15 ? 'warn' : 'bad');
+        }
+
+        function resetStats() {
+            beatTimes = [];
+            intervals = [];
+            buckets.forEach(b => bucketCounts[b] = 0);
+            bucketCounts['outlier'] = 0;
+            recentList.innerHTML = '';
+            updateHistogram();
+            onBeatPct.textContent = '--%';
+            coreJitter.textContent = '-- ms';
+            meanInterval.textContent = '-- beats';
+            missedPct.textContent = '--%';
+        }
+
+        function togglePause() {
+            paused = !paused;
+        }
+
+        // WebSocket connection
+        let ws = null;
+        let reconnectTimeout = null;
+
+        function connect() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+
+            ws = new WebSocket(`ws://${wsHost}:9998`);
+
+            ws.onopen = () => {
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connection connected';
+            };
+
+            ws.onclose = () => {
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'connection disconnected';
+                reconnectTimeout = setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                if (paused) return;
+
+                try {
+                    const data = JSON.parse(event.data);
+                    handleFrame(data);
+                } catch (e) {
+                    console.error('JSON parse error:', e);
+                }
+            };
+        }
+
+        function handleFrame(data) {
+            // Update BPM
+            if (data.bpm > 0) {
+                currentBpm = data.bpm;
+                bpmValue.textContent = data.bpm.toFixed(1);
+            }
+
+            // Update state
+            if (data.state) {
+                stateValue.textContent = data.state;
+                stateValue.className = 'status-value ' +
+                    (data.state === 'LOCKED' ? 'good' : data.state === 'HOLDOVER' ? 'warn' : 'bad');
+            }
+
+            // Track beats
+            if (data.beat && data.ts !== undefined) {
+                beatCount.textContent = data.beats || beatTimes.length + 1;
+
+                if (beatTimes.length > 0 && currentBpm > 0) {
+                    const lastTime = beatTimes[beatTimes.length - 1];
+                    const intervalSec = data.ts - lastTime;
+                    const beatPeriod = 60 / currentBpm;
+                    const normalizedInterval = intervalSec / beatPeriod;
+
+                    addInterval(normalizedInterval);
+                }
+
+                beatTimes.push(data.ts);
+
+                // Keep only last 1000 beat times
+                if (beatTimes.length > 1000) {
+                    beatTimes = beatTimes.slice(-500);
+                }
+            }
+        }
+
+        // Initialize
+        initHistogram();
+        connect();
+    </script>
+</body>
+</html>

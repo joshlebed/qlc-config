@@ -1,5 +1,8 @@
 """Peak picking for beat detection from PLP pulse curve."""
 
+import time
+from collections.abc import Callable
+
 import numpy as np
 
 
@@ -21,6 +24,7 @@ class PeakPicker:
         threshold_ratio: float = 0.5,
         debug: bool = False,
         lookahead_frames: float = 5.0,  # Emit beats this many frames early
+        on_prediction: Callable[[float, float], None] | None = None,  # Callback for predictions
     ):
         self.samplerate = samplerate
         self.hop_length = hop_length
@@ -28,6 +32,7 @@ class PeakPicker:
         self.threshold_ratio = threshold_ratio
         self.debug = debug
         self.lookahead_frames = lookahead_frames
+        self.on_prediction = on_prediction  # Callback(time, phase)
 
         # Tempo sample rate (frames per second)
         self.sr_tempo = samplerate / hop_length
@@ -41,6 +46,7 @@ class PeakPicker:
         self._reject_reason: str = ""
         self._last_phase: float = 0.0  # Track phase for wrap detection
         self._last_beat_offset: float = 0.0  # Sub-frame offset for precise timing
+        self._in_prediction_window: bool = False  # Track if we're in lookahead window
 
     def update(
         self,
@@ -137,10 +143,21 @@ class PeakPicker:
                 # Emit early when approaching beat position
                 phase_near_beat = 0 < frames_to_beat <= self.lookahead_frames
 
+                # Record prediction when we first enter the lookahead window
+                if phase_near_beat and not self._in_prediction_window:
+                    self._in_prediction_window = True
+                    if self.on_prediction:
+                        self.on_prediction(time.time(), phase)
+
             # Also check for phase wrap (beat position crossed)
             phase_wrapped = self._last_phase > 5.0 and phase < 1.0
             if phase_wrapped:
                 phase_near_beat = True
+                self._in_prediction_window = False  # Reset for next beat
+
+        # Reset prediction window when we exit the lookahead region
+        if not phase_near_beat:
+            self._in_prediction_window = False
 
         self._last_phase = phase
 
@@ -210,3 +227,4 @@ class PeakPicker:
         self.recent_onsets.clear()
         self._last_phase = 0.0
         self._last_beat_offset = 0.0
+        self._in_prediction_window = False

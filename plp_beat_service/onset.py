@@ -32,6 +32,7 @@ class OnsetEnvelopeTracker:
         # State for streaming
         self.prev_mel: np.ndarray | None = None
         self.onset_history: deque[float] = deque(maxlen=512)
+        self.peak_rms: float = 0.0  # Track peak RMS for silence detection
 
         # Hann window for STFT
         self.window = signal.windows.hann(n_fft)
@@ -46,15 +47,15 @@ class OnsetEnvelopeTracker:
             fmax=8000,
         )
 
-    def process(self, samples: np.ndarray) -> np.ndarray:
+    def process(self, samples: np.ndarray) -> tuple[np.ndarray, float]:
         """
-        Process audio samples and return onset strength values.
+        Process audio samples and return onset strength values and RMS.
 
         Args:
             samples: Mono audio samples (float32)
 
         Returns:
-            Array of onset strength values for this frame
+            Tuple of (onset strength array, RMS level)
         """
         # Pad to n_fft if needed
         if len(samples) < self.n_fft:
@@ -79,7 +80,12 @@ class OnsetEnvelopeTracker:
         self.prev_mel = mel_spec.copy()
         self.onset_history.append(onset_strength)
 
-        return np.array([onset_strength])
+        # Compute RMS for absolute energy gate
+        rms = float(np.sqrt(np.mean(samples**2)))
+        # Track peak with slow decay (0.9995 per frame at ~86 fps = ~15s half-life)
+        self.peak_rms = max(self.peak_rms * 0.9995, rms)
+
+        return np.array([onset_strength]), rms
 
     def get_envelope(self, n_frames: int = 64) -> np.ndarray:
         """Get recent onset envelope for tempogram computation."""
@@ -89,7 +95,12 @@ class OnsetEnvelopeTracker:
             hist = [0.0] * (n_frames - len(hist)) + hist
         return np.array(hist[-n_frames:])
 
+    def get_peak_rms(self) -> float:
+        """Get peak RMS level (for silence detection)."""
+        return self.peak_rms
+
     def reset(self) -> None:
         """Reset state (e.g., after long silence)."""
         self.prev_mel = None
         self.onset_history.clear()
+        self.peak_rms = 0.0

@@ -86,13 +86,19 @@ class PLPBeatService:
             tempo_min=bpm_min,
             tempo_max=bpm_max,
         )
+        self.confidence_tracker = ConfidenceTracker()
+
+        # Create prediction callback for confidence tracking
+        def on_prediction(predicted_time: float, phase: float) -> None:
+            self.confidence_tracker.record_prediction(predicted_time, phase)
+
         self.peak_picker = PeakPicker(
             samplerate=samplerate,
             hop_length=BLOCK_SIZE,
             tempo_max=bpm_max,
             debug=debug,
+            on_prediction=on_prediction,
         )
-        self.confidence_tracker = ConfidenceTracker()
         self.state_machine = BeatStateMachine()
 
         # Output - OSC
@@ -151,6 +157,8 @@ class PLPBeatService:
         self._last_status_log: float = 0.0
         self._last_overflow_log: float = 0.0
         self._is_tty = sys.stdout.isatty()
+        self._current_rms: float = 0.0  # Current audio RMS level
+        self._peak_rms: float = 0.0  # Peak RMS for silence detection
 
     def _audio_callback(
         self,
@@ -178,10 +186,14 @@ class PLPBeatService:
         now = time.time()
         self._debug_frame += 1
 
-        # Onset envelope
-        onset = self.onset_tracker.process(audio)
-        onset_val = onset[0]
+        # Onset envelope - now returns (onset_array, rms)
+        onset_result, rms = self.onset_tracker.process(audio)
+        onset_val = onset_result[0]
         self.tempogram.update(onset_val)
+
+        # Track RMS for silence detection
+        self._current_rms = rms
+        self._peak_rms = self.onset_tracker.get_peak_rms()
 
         # Tempo estimation
         bpm, strength = self.tempogram.estimate_tempo()
