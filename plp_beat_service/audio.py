@@ -8,7 +8,7 @@ import sounddevice as sd
 
 # Audio constants (from handoff section 7)
 SAMPLERATE = 44100
-BLOCK_SIZE = 1024  # ~23ms per block (higher frame rate for better beat detection)
+BLOCK_SIZE = 512  # ~11.6ms per block (reduced for lower latency)
 HOP_SIZE = 512  # ~11.6ms hop
 CHANNELS = 2  # Stereo input (mixed to mono)
 

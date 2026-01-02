@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Workspace>
-<Workspace xmlns="http://www.qlcplus.org/Workspace" CurrentWindow="InputOutputManager">
+<Workspace xmlns="http://www.qlcplus.org/Workspace" CurrentWindow="FunctionManager">
  <Creator>
   <Name>Q Light Controller Plus</Name>
   <Version>4.12.6</Version>
@@ -87,7 +87,7 @@
   </Function>
   <Function ID="11" Type="Scene" Name="show_default">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
-   <FixtureVal ID="0">0,255,1,255,2,255,3,255,4,190,5,0</FixtureVal>
+   <FixtureVal ID="0">0,255,1,255,2,0,3,255,4,190,5,0</FixtureVal>
   </Function>
   <Function ID="12" Type="Scene" Name="show_punch">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
@@ -95,17 +95,15 @@
   </Function>
   <Function ID="13" Type="Scene" Name="show_flash">
    <Speed FadeIn="0" FadeOut="0" Duration="0"/>
-   <FixtureVal ID="0">0,20,1,20,2,255,3,0,4,255,5,0</FixtureVal>
+   <FixtureVal ID="0">0,20,1,20,2,255,3,200,4,255,5,0</FixtureVal>
   </Function>
   <Function ID="14" Type="Chaser" Name="mode_reactive_show">
    <Speed FadeIn="0" FadeOut="0" Duration="100"/>
    <Direction>Forward</Direction>
    <RunOrder>Loop</RunOrder>
    <SpeedModes FadeIn="PerStep" FadeOut="PerStep" Duration="PerStep"/>
-   <Step Number="0" FadeIn="0" Hold="1000000" FadeOut="50">11</Step>
-   <Step Number="1" FadeIn="50" Hold="50" FadeOut="50">12</Step>
-   <Step Number="2" FadeIn="50" Hold="999950" FadeOut="0">11</Step>
-   <Step Number="3" FadeIn="0" Hold="100" FadeOut="0">13</Step>
+   <Step Number="0" FadeIn="20" Hold="1000000" FadeOut="20">11</Step>
+   <Step Number="1" FadeIn="20" Hold="100" FadeOut="20">13</Step>
   </Function>
  </Engine>
  <VirtualConsole>

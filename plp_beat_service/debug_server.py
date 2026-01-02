@@ -71,7 +71,9 @@ class DebugWebSocket:
                 if now - self._last_log_time > 10.0:
                     with self._clients_lock:
                         client_count = len(self._clients)
-                    print(f"[debug] Broadcaster: {self._msg_count} msgs sent, {client_count} clients, queue size: {self._queue.qsize()}")
+                    print(
+                        f"[debug] Broadcaster: {self._msg_count} msgs sent, {client_count} clients, queue size: {self._queue.qsize()}"
+                    )
                     self._last_log_time = now
 
                 # Send to all clients
@@ -129,7 +131,9 @@ class DebugWebSocket:
             finally:
                 with self._clients_lock:
                     self._clients.discard(websocket)
-                    print(f"[debug] Client disconnected: {client_addr} (total: {len(self._clients)})")
+                    print(
+                        f"[debug] Client disconnected: {client_addr} (total: {len(self._clients)})"
+                    )
 
         try:
             # Bind to all interfaces for network access

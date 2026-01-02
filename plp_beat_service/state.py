@@ -22,10 +22,10 @@ class BeatStateMachine:
 
     def __init__(
         self,
-        lock_threshold: float = 0.4,  # Lowered from 0.5 to allow easier locking
-        unlock_threshold: float = 0.25,  # Lowered from 0.3
-        lock_beats: int = 3,  # Reduced from 4 for faster locking
-        holdover_beats: int = 6,  # Increased from 4 to maintain lock through brief dropouts
+        lock_threshold: float = 0.35,  # Lowered to help tracks with subtle rhythms lock faster
+        unlock_threshold: float = 0.35,  # Raised to enter HOLDOVER sooner during breakdowns
+        lock_beats: int = 3,  # Consecutive good beats needed to lock
+        holdover_beats: int = 8,  # Beats to extrapolate during breakdown before stopping
         beat_tolerance_ms: float = 50.0,  # Tolerance for beat alignment
     ):
         self.lock_threshold = lock_threshold
@@ -88,13 +88,15 @@ class BeatStateMachine:
             if confidence >= self.unlock_threshold:
                 self.consecutive_bad = 0
                 beat_period = 60.0 / self.locked_bpm
+                min_interval = beat_period * 0.7  # 70% of beat period
 
                 if beat_detected:
-                    # Emit every detected beat
-                    should_emit = True
-                    # Slowly adjust BPM toward detected
+                    # Only emit if enough time since last beat
+                    if now - self.last_beat_time >= min_interval:
+                        should_emit = True
+                        self.last_beat_time = now
+                    # Slowly adjust BPM toward detected (even if beat not emitted)
                     self.locked_bpm = self.locked_bpm * 0.95 + bpm * 0.05
-                    self.last_beat_time = now
             else:
                 self.consecutive_bad += 1
                 if self.consecutive_bad >= 2:
@@ -108,8 +110,12 @@ class BeatStateMachine:
                 self.state = LockState.LOCKED
                 self.consecutive_bad = 0
                 if beat_detected:
-                    should_emit = True
-                    self.last_beat_time = now
+                    # Only emit if enough time since last beat (regardless of state)
+                    beat_period = 60.0 / self.locked_bpm if self.locked_bpm > 0 else 0.5
+                    min_interval = beat_period * 0.7  # 70% of beat period
+                    if now - self.last_beat_time >= min_interval:
+                        should_emit = True
+                        self.last_beat_time = now
             else:
                 # Extrapolate beats using last known BPM
                 if self.locked_bpm > 0:

@@ -37,9 +37,7 @@ class MIDIOutput:
         channel: int = 0,
     ):
         if not HAVE_RTMIDI:
-            raise ImportError(
-                "rtmidi not installed. Install with: uv pip install python-rtmidi"
-            )
+            raise ImportError("rtmidi not installed. Install with: uv pip install python-rtmidi")
 
         self.port_name = port_name
         self.note_mode = note_mode
