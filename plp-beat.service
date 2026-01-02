@@ -3,6 +3,9 @@ Description=PLP Beat Detection Service
 Documentation=https://github.com/joshlebed/qlc-config
 After=sound.target qlcplus.service
 Wants=qlcplus.service
+# Allow up to 10 restarts in 5 minutes (handles slow device enumeration on boot)
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -12,14 +15,16 @@ WorkingDirectory=/home/joshlebed/code/qlc-config
 Environment=PYTHONUNBUFFERED=1
 
 # PLP beat detection with MIDI note output
-# Device 5 = H4 USB Audio (supports 44100 Hz)
+# Auto-detect device by name pattern (resilient to device number changes)
 # Debug server enabled by default on ports 9998 (WS) and 8080 (HTTP)
-ExecStart=/home/joshlebed/.local/bin/uv run plp-beat --device 5 --midi
+ExecStart=/home/joshlebed/.local/bin/uv run plp-beat --device-name lavalier --midi
 
 # Connect MIDI port to Midi Through after startup
-# Use grep -B1 to get the line before PLPBeat (contains client number)
-ExecStartPost=/bin/bash -c 'sleep 2 && for i in 1 2 3 4 5; do PORT=$$(aconnect -l | grep -B1 "PLPBeat" | head -1 | sed "s/client \\([0-9]*\\):.*/\\1/"); if [ -n "$$PORT" ] && [ "$$PORT" -gt 0 ] 2>/dev/null; then aconnect $$PORT:0 14:0 && echo "Connected PLPBeat ($$PORT) to Midi Through" && break; fi; sleep 1; done'
+# Wait longer for Python/MIDI initialization (takes ~5-10s after ExecStart begins)
+# Retry up to 15 times with 2s intervals (30s total timeout)
+ExecStartPost=/bin/bash -c 'sleep 8 && for i in $$(seq 1 15); do PORT=$$(aconnect -l | grep -B1 "PLPBeat" | head -1 | sed "s/client \\([0-9]*\\):.*/\\1/"); if [ -n "$$PORT" ] && [ "$$PORT" -gt 0 ] 2>/dev/null; then aconnect $$PORT:0 14:0 && echo "Connected PLPBeat ($$PORT) to Midi Through" && exit 0; fi; echo "Waiting for PLPBeat MIDI port (attempt $$i/15)..."; sleep 2; done; echo "Failed to find PLPBeat MIDI port"'
 
+# Restart on any failure (including device not found)
 Restart=on-failure
 RestartSec=5
 
