@@ -54,6 +54,7 @@ class PeakPicker:
         tempo: float,
         onset_strength: float = 0.0,
         phase: float = 0.0,
+        current_time: float | None = None,
     ) -> bool:
         """
         Hybrid beat detection: onset peaks + phase-based prediction.
@@ -66,6 +67,7 @@ class PeakPicker:
             tempo: Current tempo estimate (BPM)
             onset_strength: Current onset envelope strength
             phase: Current PLP phase (0 = beat expected, 2*pi = next beat)
+            current_time: Optional timestamp (uses time.time() if not provided)
 
         Returns:
             True if beat should be emitted this frame
@@ -147,7 +149,8 @@ class PeakPicker:
                 if phase_near_beat and not self._in_prediction_window:
                     self._in_prediction_window = True
                     if self.on_prediction:
-                        self.on_prediction(time.time(), phase)
+                        now = current_time if current_time is not None else time.time()
+                        self.on_prediction(now, phase)
 
             # Also check for phase wrap (beat position crossed)
             phase_wrapped = self._last_phase > 5.0 and phase < 1.0
