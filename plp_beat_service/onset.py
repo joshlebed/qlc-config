@@ -82,8 +82,8 @@ class OnsetEnvelopeTracker:
 
         # Compute RMS for absolute energy gate
         rms = float(np.sqrt(np.mean(samples**2)))
-        # Track peak with slow decay (0.9995 per frame at ~86 fps = ~15s half-life)
-        self.peak_rms = max(self.peak_rms * 0.9995, rms)
+        # Track peak with faster decay (~0.8s half-life instead of 15s for quick breakdown detection)
+        self.peak_rms = max(self.peak_rms * 0.99, rms)
 
         return np.array([onset_strength]), rms
 

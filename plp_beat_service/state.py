@@ -25,7 +25,7 @@ class BeatStateMachine:
         lock_threshold: float = 0.35,  # Lowered to help tracks with subtle rhythms lock faster
         unlock_threshold: float = 0.35,  # Raised to enter HOLDOVER sooner during breakdowns
         lock_beats: int = 3,  # Consecutive good beats needed to lock
-        holdover_beats: int = 8,  # Beats to extrapolate during breakdown before stopping
+        holdover_beats: int = 3,  # Brief extrapolation during breakdowns (was 8)
         beat_tolerance_ms: float = 50.0,  # Tolerance for beat alignment
     ):
         self.lock_threshold = lock_threshold
