@@ -23,6 +23,33 @@ def list_devices() -> None:
     print("-" * 60)
 
 
+def find_device_by_name(pattern: str, required_samplerate: int | None = None) -> int | None:
+    """Find a device by name pattern (case-insensitive substring match).
+
+    Args:
+        pattern: Substring to match in device name
+        required_samplerate: If specified, only match devices supporting this rate
+
+    Returns:
+        Device index or None if not found
+    """
+    pattern_lower = pattern.lower()
+    devices = sd.query_devices()
+
+    for i, dev in enumerate(devices):
+        if dev["max_input_channels"] <= 0:
+            continue
+        if pattern_lower in dev["name"].lower():
+            # Check sample rate if required
+            if required_samplerate:
+                default_rate = dev.get("default_samplerate", 0)
+                # Allow some tolerance (e.g., 44100 vs 44100.0)
+                if abs(default_rate - required_samplerate) > 100:
+                    continue
+            return i
+    return None
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -64,6 +91,13 @@ Debug server:
         type=int,
         default=None,
         help="Audio device index (use -l to list)",
+    )
+    parser.add_argument(
+        "-n",
+        "--device-name",
+        type=str,
+        default=None,
+        help="Find device by name pattern (case-insensitive, e.g., 'lavalier')",
     )
 
     # BPM range
@@ -171,13 +205,27 @@ Debug server:
         list_devices()
         return 0
 
+    # Resolve device: --device-name takes precedence over --device
+    device = args.device
+    if args.device_name:
+        # Find device by name pattern, requiring 44100 Hz support
+        from plp_beat_service.audio import SAMPLERATE
+
+        device = find_device_by_name(args.device_name, required_samplerate=SAMPLERATE)
+        if device is None:
+            print(f"Error: No device matching '{args.device_name}' with {SAMPLERATE} Hz support")
+            print("Available devices:")
+            list_devices()
+            return 1
+        print(f"Found device '{args.device_name}' at index {device}")
+
     # Handle compatibility aliases
     enable_midi = args.midi or args.note_mode
     midi_note_mode = not args.clock
 
     try:
         service = PLPBeatService(
-            device=args.device,
+            device=device,
             bpm_min=args.bpm_min,
             bpm_max=args.bpm_max,
             osc_host=args.osc_host,
