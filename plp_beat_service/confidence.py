@@ -18,16 +18,15 @@ class ConfidenceTracker:
     Includes absolute RMS gate to prevent beats during silence.
     """
 
-    # Absolute RMS threshold - below this is considered silence
-    # Room simulation 5th percentile is ~0.004, so use lower threshold
-    # Typical mic noise floor is ~0.001-0.002, music is ~0.01-0.1
-    SILENCE_RMS_THRESHOLD = 0.002
+    # Silence threshold - only absolute, relative was too aggressive for music dynamics
+    # User's mic shows ~0.002-0.005 during silence, ~0.01+ during music
+    SILENCE_RMS_THRESHOLD = 0.006
 
     def __init__(
         self,
         pulse_window: int = 64,
         tempo_window: int = 16,
-        smoothing_up: float = 0.1,  # Slow rise
+        smoothing_up: float = 0.2,  # Moderate rise
         smoothing_down: float = 0.3,  # Fast fall (for breakdowns)
     ):
         self.pulse_window = pulse_window
@@ -39,7 +38,8 @@ class ConfidenceTracker:
         self.pulse_history: deque[float] = deque(maxlen=pulse_window)
         self.tempo_history: deque[float] = deque(maxlen=tempo_window)
         self.onset_history: deque[float] = deque(maxlen=32)
-        self.rms_history: deque[float] = deque(maxlen=16)  # Track RMS for silence detection
+        self.rms_history: deque[float] = deque(maxlen=32)  # Track RMS for silence detection (longer window)
+        self.rms_peak: float = 0.0  # Peak RMS seen (for relative silence detection)
         self.confidence: float = 0.0
         self.is_silence: bool = False  # True when in silence/noise floor
 
@@ -70,13 +70,17 @@ class ConfidenceTracker:
         if tempo > 0:
             self.tempo_history.append(tempo)
 
-        # ABSOLUTE SILENCE GATE: Check if we're in silence/noise floor
-        # Use recent average RMS to avoid single-frame glitches
-        if len(self.rms_history) >= 4:
-            recent_rms = float(np.mean(list(self.rms_history)[-8:]))
-            self.is_silence = recent_rms < self.SILENCE_RMS_THRESHOLD
+        # SILENCE GATE: Simple absolute threshold with median smoothing
+        # Update peak RMS for status logging
+        self.rms_peak = max(self.rms_peak * 0.999, rms)
+
+        # Use median of recent RMS values - robust to occasional noise spikes
+        if len(self.rms_history) >= 8:
+            recent_rms = float(np.median(list(self.rms_history)[-16:]))
         else:
-            self.is_silence = rms < self.SILENCE_RMS_THRESHOLD
+            recent_rms = rms
+
+        self.is_silence = recent_rms < self.SILENCE_RMS_THRESHOLD
 
         # If in silence, force confidence to 0 immediately
         if self.is_silence:
@@ -106,7 +110,8 @@ class ConfidenceTracker:
             tempo_mean = float(np.mean(self.tempo_history))
             if tempo_mean > 0:
                 tempo_cv = tempo_std / tempo_mean
-                tempo_confidence = float(np.clip(1 - tempo_cv * 10, 0, 1))  # More sensitive
+                # 5% CV (6 BPM on 120) = 75% confidence, 2% CV = 90%
+                tempo_confidence = float(np.clip(1 - tempo_cv * 5, 0, 1))
             else:
                 tempo_confidence = 0.0
         else:
@@ -115,13 +120,13 @@ class ConfidenceTracker:
         # Component 3: Onset energy (adaptive threshold for breakdown detection)
         if len(self.onset_history) >= 16:
             recent_onset = float(np.mean(list(self.onset_history)[-8:]))
-            # Use peak of history as reference (adapts to mic gain / room levels)
-            peak_onset = float(np.percentile(list(self.onset_history), 90))
+            # Use 75th percentile as reference (more forgiving than 90th)
+            peak_onset = float(np.percentile(list(self.onset_history), 75))
             if peak_onset > 0.01:  # Have some reference
-                # If recent is near peak level, high confidence
-                # If recent is much lower than peak, breakdown
+                # If recent is near typical level, high confidence
+                # If recent is much lower, breakdown
                 ratio = recent_onset / peak_onset
-                onset_confidence = float(np.clip(ratio * 1.5, 0, 1))  # Scale up slightly
+                onset_confidence = float(np.clip(ratio * 1.2, 0, 1))
             else:
                 onset_confidence = 0.5  # No reference yet
         else:
@@ -176,5 +181,6 @@ class ConfidenceTracker:
         self.tempo_history.clear()
         self.onset_history.clear()
         self.rms_history.clear()
+        self.rms_peak = 0.0
         self.confidence = 0.0
         self.is_silence = False

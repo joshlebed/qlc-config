@@ -389,10 +389,14 @@ class PLPBeatService:
                         self._last_status_log = now
                         state = self.state_machine.get_state()
                         locked_bpm = self.state_machine.get_locked_bpm()
+                        is_silence = self.confidence_tracker.is_silence
+                        rms_peak = self.confidence_tracker.rms_peak
                         print(
                             f"[status] {state.value} | "
                             f"{locked_bpm:.1f} BPM | "
                             f"conf: {self.current_confidence:.0%} | "
+                            f"rms: {self._current_rms:.4f} (peak: {rms_peak:.4f}) | "
+                            f"silence: {is_silence} | "
                             f"beats: {self.beat_count}",
                             flush=True,
                         )
