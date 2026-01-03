@@ -67,12 +67,14 @@ def parse_rekordbox_xml(xml_path: Path) -> tuple[dict, dict, dict]:
         # Get TEMPO elements
         tempos = []
         for tempo in track.findall("TEMPO"):
-            tempos.append({
-                "inizio": float(tempo.get("Inizio", "0")),
-                "bpm": float(tempo.get("Bpm", "0")),
-                "metro": tempo.get("Metro", "4/4"),
-                "battito": int(tempo.get("Battito", "1")),
-            })
+            tempos.append(
+                {
+                    "inizio": float(tempo.get("Inizio", "0")),
+                    "bpm": float(tempo.get("Bpm", "0")),
+                    "metro": tempo.get("Metro", "4/4"),
+                    "battito": int(tempo.get("Battito", "1")),
+                }
+            )
 
         tracks[track_id] = {
             "track_id": track_id,
@@ -146,20 +148,19 @@ def get_file_path(location: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Preprocess rekordbox XML for beat grid data")
     parser.add_argument("xml_path", type=Path, help="Path to rekordbox_export.xml")
-    parser.add_argument("--output-dir", type=Path, default=Path("test_data"),
-                        help="Output directory for JSON files")
-    parser.add_argument("--count", type=int, default=20,
-                        help="Number of tracks to select")
-    parser.add_argument("--min-bpm", type=float, default=115,
-                        help="Minimum BPM to include")
-    parser.add_argument("--max-bpm", type=float, default=160,
-                        help="Maximum BPM to include")
-    parser.add_argument("--bin-size", type=float, default=5,
-                        help="BPM bin size for sampling")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed for reproducible sampling")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Show what would be done without writing files")
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("test_data"), help="Output directory for JSON files"
+    )
+    parser.add_argument("--count", type=int, default=20, help="Number of tracks to select")
+    parser.add_argument("--min-bpm", type=float, default=115, help="Minimum BPM to include")
+    parser.add_argument("--max-bpm", type=float, default=160, help="Maximum BPM to include")
+    parser.add_argument("--bin-size", type=float, default=5, help="BPM bin size for sampling")
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducible sampling"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be done without writing files"
+    )
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -167,8 +168,10 @@ def main() -> None:
     if not args.xml_path.exists():
         print(f"ERROR: File not found: {args.xml_path}", file=sys.stderr)
         print("\nTo get the file, run:", file=sys.stderr)
-        print("  scp laptop:/Users/joshlebed/Documents/rekordbox/rekordbox_export.xml .",
-              file=sys.stderr)
+        print(
+            "  scp laptop:/Users/joshlebed/Documents/rekordbox/rekordbox_export.xml .",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print(f"Parsing {args.xml_path}...")
@@ -210,7 +213,9 @@ def main() -> None:
             continue
         candidates.append(track)
 
-    print(f"Candidates with constant BPM in range [{args.min_bpm}, {args.max_bpm}]: {len(candidates)}")
+    print(
+        f"Candidates with constant BPM in range [{args.min_bpm}, {args.max_bpm}]: {len(candidates)}"
+    )
 
     # Bin by BPM and sample
     bins: dict[int, list[dict]] = defaultdict(list)
@@ -237,10 +242,10 @@ def main() -> None:
     if len(selected) < args.count:
         remaining = [t for t in candidates if t not in selected]
         random.shuffle(remaining)
-        selected.extend(remaining[:args.count - len(selected)])
+        selected.extend(remaining[: args.count - len(selected)])
 
     # Trim if we have too many
-    selected = selected[:args.count]
+    selected = selected[: args.count]
     selected.sort(key=lambda t: t["average_bpm"])
 
     print(f"\nSelected {len(selected)} tracks:")

@@ -18,6 +18,7 @@ Usage:
 
 import os
 import sys
+
 from pythonosc import udp_client
 
 # Configuration - can override with environment variables
