@@ -1,8 +1,5 @@
 """Peak picking for beat detection from PLP pulse curve."""
 
-import time
-from collections.abc import Callable
-
 import numpy as np
 
 
@@ -24,7 +21,6 @@ class PeakPicker:
         threshold_ratio: float = 0.5,
         debug: bool = False,
         lookahead_frames: float = 5.0,  # Emit beats this many frames early
-        on_prediction: Callable[[float, float], None] | None = None,  # Callback for predictions
     ):
         self.samplerate = samplerate
         self.hop_length = hop_length
@@ -32,7 +28,6 @@ class PeakPicker:
         self.threshold_ratio = threshold_ratio
         self.debug = debug
         self.lookahead_frames = lookahead_frames
-        self.on_prediction = on_prediction  # Callback(time, phase)
 
         # Tempo sample rate (frames per second)
         self.sr_tempo = samplerate / hop_length
@@ -46,7 +41,6 @@ class PeakPicker:
         self._reject_reason: str = ""
         self._last_phase: float = 0.0  # Track phase for wrap detection
         self._last_beat_offset: float = 0.0  # Sub-frame offset for precise timing
-        self._in_prediction_window: bool = False  # Track if we're in lookahead window
 
     def update(
         self,
@@ -54,7 +48,6 @@ class PeakPicker:
         tempo: float,
         onset_strength: float = 0.0,
         phase: float = 0.0,
-        current_time: float | None = None,
     ) -> bool:
         """
         Hybrid beat detection: onset peaks + phase-based prediction.
@@ -67,7 +60,6 @@ class PeakPicker:
             tempo: Current tempo estimate (BPM)
             onset_strength: Current onset envelope strength
             phase: Current PLP phase (0 = beat expected, 2*pi = next beat)
-            current_time: Optional timestamp (uses time.time() if not provided)
 
         Returns:
             True if beat should be emitted this frame
@@ -145,38 +137,29 @@ class PeakPicker:
                 # Emit early when approaching beat position
                 phase_near_beat = 0 < frames_to_beat <= self.lookahead_frames
 
-                # Record prediction when we first enter the lookahead window
-                if phase_near_beat and not self._in_prediction_window:
-                    self._in_prediction_window = True
-                    if self.on_prediction:
-                        now = current_time if current_time is not None else time.time()
-                        self.on_prediction(now, phase)
-
             # Also check for phase wrap (beat position crossed)
             phase_wrapped = self._last_phase > 5.0 and phase < 1.0
             if phase_wrapped:
                 phase_near_beat = True
-                self._in_prediction_window = False  # Reset for next beat
-
-        # Reset prediction window when we exit the lookahead region
-        if not phase_near_beat:
-            self._in_prediction_window = False
 
         self._last_phase = phase
 
         # ===== DECISION LOGIC =====
+        # Energy gate: block beats during breakdowns/silence
+        has_energy = self.has_sufficient_energy(onset_strength)
+
         # Phase alignment check: is phase near beat position (within 90 degrees)?
         phase_tolerance = np.pi / 2  # 90 degrees
         phase_aligned = phase < phase_tolerance or phase > (2 * np.pi - phase_tolerance)
 
         method = None
-        if is_onset_peak:
-            # Onset peak detected
+        if is_onset_peak and has_energy:
+            # Onset peak detected with sufficient energy
             if phase_aligned:
                 method = "onset+phase"
             else:
                 method = "onset"
-        elif phase_near_beat:
+        elif phase_near_beat and has_energy:
             # Phase prediction - only if some audio activity
             if len(self.recent_onsets) >= 10:
                 recent_mean = float(np.mean(self.recent_onsets[-10:]))
@@ -222,6 +205,29 @@ class PeakPicker:
         """
         return self._last_beat_offset
 
+    def has_sufficient_energy(self, onset_strength: float, min_ratio: float = 0.3) -> bool:
+        """
+        Check if current onset is strong enough to emit a beat.
+
+        Compares to recent peak onset level, returns True if above threshold.
+        This prevents beats during true silence/breakdowns regardless of confidence.
+
+        Args:
+            onset_strength: Current onset envelope value
+            min_ratio: Minimum ratio of peak onset required (default 30%)
+
+        Returns:
+            True if sufficient energy, False if breakdown/silence
+        """
+        if len(self.recent_onsets) < 20:
+            return True  # Not enough history yet
+
+        peak_onset = float(np.percentile(self.recent_onsets[-50:], 90))
+        if peak_onset < 0.1:
+            return True  # No reference level established
+
+        return onset_strength >= peak_onset * min_ratio
+
     def reset(self) -> None:
         """Reset peak picker state."""
         self.last_beat_frame = -1000
@@ -230,4 +236,3 @@ class PeakPicker:
         self.recent_onsets.clear()
         self._last_phase = 0.0
         self._last_beat_offset = 0.0
-        self._in_prediction_window = False

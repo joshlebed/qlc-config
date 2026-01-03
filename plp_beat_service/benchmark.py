@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import time
 from typing import Any
 
@@ -111,6 +112,81 @@ def analyze_interval_distribution(
     }
 
 
+def evaluate_ground_truth(
+    detected_beats: list[float],
+    ground_truth: list[float],
+    tolerance_ms: float = 50.0,
+) -> dict[str, Any]:
+    """
+    Compare detected beats against ground truth from test_data JSON.
+
+    Args:
+        detected_beats: List of detected beat times in seconds
+        ground_truth: List of ground truth beat times from rekordbox
+        tolerance_ms: Maximum allowed error for a true positive (default 50ms)
+
+    Returns:
+        Dict with precision, recall, F1, and timing error stats
+    """
+    if not detected_beats or not ground_truth:
+        return {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "true_positives": 0,
+            "false_positives": len(detected_beats),
+            "missed_beats": len(ground_truth),
+            "mean_timing_error_ms": 0.0,
+            "max_timing_error_ms": 0.0,
+            "std_timing_error_ms": 0.0,
+        }
+
+    tolerance_sec = tolerance_ms / 1000.0
+
+    # Track which ground truth beats were matched
+    gt_matched = [False] * len(ground_truth)
+    true_positives = 0
+    timing_errors: list[float] = []
+
+    for detected in detected_beats:
+        # Find closest unmatched ground truth beat
+        best_idx = None
+        best_error = float("inf")
+
+        for i, gt in enumerate(ground_truth):
+            if gt_matched[i]:
+                continue  # Already matched
+            error = abs(gt - detected)
+            if error < best_error:
+                best_error = error
+                best_idx = i
+
+        if best_idx is not None and best_error <= tolerance_sec:
+            gt_matched[best_idx] = True
+            true_positives += 1
+            timing_errors.append(best_error * 1000)  # Convert to ms
+
+    # Calculate metrics
+    precision = true_positives / len(detected_beats) if detected_beats else 0.0
+    recall = true_positives / len(ground_truth) if ground_truth else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    false_positives = len(detected_beats) - true_positives
+    missed_beats = len(ground_truth) - true_positives
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "true_positives": true_positives,
+        "false_positives": false_positives,
+        "missed_beats": missed_beats,
+        "mean_timing_error_ms": float(np.mean(timing_errors)) if timing_errors else 0.0,
+        "max_timing_error_ms": float(max(timing_errors)) if timing_errors else 0.0,
+        "std_timing_error_ms": float(np.std(timing_errors)) if timing_errors else 0.0,
+    }
+
+
 def benchmark(
     file_path: str,
     expected_bpm: float | None = None,
@@ -160,16 +236,10 @@ def benchmark(
         tempo_max=bpm_max,
     )
     confidence_tracker = ConfidenceTracker()
-
-    # Create prediction callback for confidence tracking
-    def on_prediction(predicted_time: float, phase: float) -> None:
-        confidence_tracker.record_prediction(predicted_time, phase)
-
     peak_picker = PeakPicker(
         samplerate=source.sr,
         hop_length=BLOCK_SIZE,
         tempo_max=bpm_max,
-        on_prediction=on_prediction,
     )
     state_machine = BeatStateMachine()
 
@@ -208,13 +278,10 @@ def benchmark(
         current_time = frame_count * BLOCK_SIZE / source.sr
 
         # Onset envelope - now returns (onset_array, rms)
-        onset_result, rms = onset_tracker.process(chunk)
+        onset_result, _rms = onset_tracker.process(chunk)
         onset_val = float(onset_result[0])
         tempogram.update(onset_val)
         bpm, strength = tempogram.estimate_tempo()
-
-        # Track peak RMS for silence detection
-        peak_rms = onset_tracker.get_peak_rms()
 
         # Default values for when tempo is not valid
         pulse = 0.0
@@ -227,23 +294,13 @@ def benchmark(
 
             # Check for raw peak (pass onset and phase for combined detection)
             beat_detected = peak_picker.update(
-                pulse, bpm, onset_strength=onset_val, phase=plp.phase, current_time=current_time
+                pulse, bpm, onset_strength=onset_val, phase=plp.phase
             )
             if beat_detected:
                 raw_beat_count += 1
-                # Record hit for alignment-based confidence
-                phase_error = abs(plp.phase)
-                confidence_tracker.record_hit(
-                    onset_time=current_time,
-                    onset_strength=onset_val,
-                    phase_error=phase_error,
-                )
 
-            # Update confidence (include RMS for silence detection)
-            confidence = confidence_tracker.update(
-                pulse, bpm, strength, onset_val,
-                rms=rms, peak_rms=peak_rms,
-            )
+            # Update confidence (energy-based model)
+            confidence = confidence_tracker.update(pulse, bpm, strength, onset_val)
             confidence_samples.append(confidence)
 
             if debug and beat_detected:
@@ -282,6 +339,7 @@ def benchmark(
                 "beats": beat_count,
                 "conf_pulse": conf_components["pulse"],
                 "conf_tempo": conf_components["tempo"],
+                "conf_onset": conf_components["onset"],
                 "conf_raw": conf_components["raw"],
                 "good_count": state_debug["consecutive_good"],
                 "bad_count": state_debug["consecutive_bad"],
@@ -349,6 +407,14 @@ def benchmark(
     # Analyze interval distribution (normalized to beat period)
     interval_analysis = analyze_interval_distribution(beat_times, detected_bpm=detected_bpm)
 
+    # Load ground truth if JSON file exists
+    gt_beats: list[float] = []
+    json_path = file_path.rsplit(".", 1)[0] + ".json"
+    if os.path.exists(json_path):
+        with open(json_path) as f:
+            ground_truth_data = json.load(f)
+        gt_beats = ground_truth_data.get("beats", [])
+
     results: dict[str, Any] = {
         "file": file_path,
         "duration_s": source.duration,
@@ -372,6 +438,11 @@ def benchmark(
         results["expected_bpm"] = expected_bpm
         results["bpm_error"] = abs(detected_bpm - expected_bpm)
         results["bpm_error_pct"] = abs(detected_bpm - expected_bpm) / expected_bpm * 100
+
+    # Evaluate against ground truth if available
+    if gt_beats:
+        gt_eval = evaluate_ground_truth(beat_times, gt_beats)
+        results["ground_truth_eval"] = gt_eval
 
     # Print results
     if verbose:
@@ -436,6 +507,28 @@ def benchmark(
                     bar_len = int(30 * count / max_count)
                     pct = 100 * count / interval_analysis["total_intervals"]
                     print(f"    {bucket:>7}: {'█' * bar_len} {count} ({pct:.1f}%)")
+
+        # Ground truth evaluation
+        if "ground_truth_eval" in results:
+            gt = results["ground_truth_eval"]
+            print("")
+            print("Ground Truth Evaluation:")
+            print(
+                f"  Precision: {gt['precision']:.1%} "
+                f"({gt['true_positives']} TP / {len(beat_times)} detected)"
+            )
+            print(
+                f"  Recall: {gt['recall']:.1%} "
+                f"({gt['true_positives']} TP / {len(gt_beats)} ground truth)"
+            )
+            print(f"  F1 Score: {gt['f1']:.1%}")
+            print(f"  False Positives: {gt['false_positives']}")
+            print(f"  Missed Beats: {gt['missed_beats']}")
+            if gt["mean_timing_error_ms"] > 0:
+                print(
+                    f"  Mean Timing Error: {gt['mean_timing_error_ms']:.1f} ms "
+                    f"(max: {gt['max_timing_error_ms']:.1f} ms)"
+                )
 
         print(f"{'=' * 50}")
 
