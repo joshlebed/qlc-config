@@ -14,7 +14,14 @@ class ConfidenceTracker:
     - Tempo agreement (low CV = high confidence)
     - Onset energy (relative to recent peak)
     - Raw tempo strength
+
+    Includes absolute RMS gate to prevent beats during silence.
     """
+
+    # Absolute RMS threshold - below this is considered silence
+    # Room simulation 5th percentile is ~0.004, so use lower threshold
+    # Typical mic noise floor is ~0.001-0.002, music is ~0.01-0.1
+    SILENCE_RMS_THRESHOLD = 0.002
 
     def __init__(
         self,
@@ -32,10 +39,17 @@ class ConfidenceTracker:
         self.pulse_history: deque[float] = deque(maxlen=pulse_window)
         self.tempo_history: deque[float] = deque(maxlen=tempo_window)
         self.onset_history: deque[float] = deque(maxlen=32)
+        self.rms_history: deque[float] = deque(maxlen=16)  # Track RMS for silence detection
         self.confidence: float = 0.0
+        self.is_silence: bool = False  # True when in silence/noise floor
 
     def update(
-        self, pulse_peak: float, tempo: float, tempo_strength: float, onset_strength: float = 0.0
+        self,
+        pulse_peak: float,
+        tempo: float,
+        tempo_strength: float,
+        onset_strength: float = 0.0,
+        rms: float = 0.0,
     ) -> float:
         """
         Update confidence signal.
@@ -45,14 +59,34 @@ class ConfidenceTracker:
             tempo: Current tempo estimate (BPM)
             tempo_strength: Raw tempo estimate confidence
             onset_strength: Current onset envelope value (audio energy)
+            rms: Current RMS level for absolute silence detection
 
         Returns:
             Smoothed confidence value (0-1)
         """
         self.pulse_history.append(pulse_peak)
         self.onset_history.append(onset_strength)
+        self.rms_history.append(rms)
         if tempo > 0:
             self.tempo_history.append(tempo)
+
+        # ABSOLUTE SILENCE GATE: Check if we're in silence/noise floor
+        # Use recent average RMS to avoid single-frame glitches
+        if len(self.rms_history) >= 4:
+            recent_rms = float(np.mean(list(self.rms_history)[-8:]))
+            self.is_silence = recent_rms < self.SILENCE_RMS_THRESHOLD
+        else:
+            self.is_silence = rms < self.SILENCE_RMS_THRESHOLD
+
+        # If in silence, force confidence to 0 immediately
+        if self.is_silence:
+            self.confidence = 0.0
+            self.last_pulse_confidence = 0.0
+            self.last_tempo_confidence = 0.0
+            self.last_onset_confidence = 0.0
+            self.last_raw_confidence = 0.0
+            self.last_combined = 0.0
+            return 0.0
 
         # Component 1: Pulse consistency (low variance = high confidence)
         if len(self.pulse_history) >= 4:
@@ -141,4 +175,6 @@ class ConfidenceTracker:
         self.pulse_history.clear()
         self.tempo_history.clear()
         self.onset_history.clear()
+        self.rms_history.clear()
         self.confidence = 0.0
+        self.is_silence = False

@@ -1,6 +1,7 @@
 """Peak picking for beat detection from PLP pulse curve."""
 
 import numpy as np
+from scipy import signal as scipy_signal
 
 
 class PeakPicker:
@@ -236,3 +237,90 @@ class PeakPicker:
         self.recent_onsets.clear()
         self._last_phase = 0.0
         self._last_beat_offset = 0.0
+
+
+class PLPBeatDetector:
+    """
+    Beat detection from PLP pulse buffer using peak distance method.
+
+    Reference: ../real_time_plp/realtimeplp.py PredominantLocalPulse.detect_beat()
+
+    This approach is simpler and more robust than the hybrid onset/phase
+    detection in PeakPicker. It detects beats by watching when the distance
+    to the next pulse peak increases - indicating we just passed a peak.
+    """
+
+    def __init__(self, prominence: float = 0.01, debug: bool = False):
+        """
+        Initialize PLPBeatDetector.
+
+        Args:
+            prominence: Minimum prominence for scipy peak detection
+            debug: Whether to print debug info
+        """
+        self.prominence = prominence
+        self.debug = debug
+        self._last_beat_distance: int = 1_000_000_000
+        self._max_peak_amplitude: float = -1.0
+        self.stability: float = 0.0
+        self.frame_count: int = 0
+
+    def detect_beat(
+        self,
+        pulse_buffer: np.ndarray,
+        cursor: int,
+        t: np.ndarray,
+    ) -> bool:
+        """
+        Detect beat using peak distance method.
+
+        Args:
+            pulse_buffer: Normalized PLP pulse buffer
+            cursor: Current read position in buffer
+            t: Time array for buffer
+
+        Returns:
+            True if beat detected (we just passed a peak)
+        """
+        self.frame_count += 1
+
+        # Find peaks in buffer
+        peaks_i, _ = scipy_signal.find_peaks(pulse_buffer, prominence=self.prominence)
+
+        # Find future beats (peaks after cursor)
+        future_beats = peaks_i[peaks_i > cursor]
+
+        if len(future_beats) > 0:
+            closest_future_beat = future_beats[0]
+        else:
+            closest_future_beat = 0
+
+        distance = closest_future_beat - cursor
+
+        # Beat detected when distance increases (we passed a peak)
+        beat_detected = distance > self._last_beat_distance
+        self._last_beat_distance = distance
+
+        if beat_detected:
+            # Update stability based on peak amplitude
+            peak_amplitude = float(pulse_buffer[cursor])
+            if peak_amplitude > self._max_peak_amplitude:
+                self._max_peak_amplitude = peak_amplitude
+            if self._max_peak_amplitude > 0:
+                self.stability = peak_amplitude / self._max_peak_amplitude
+
+            if self.debug:
+                print(
+                    f"[plp-beat] frame={self.frame_count}: "
+                    f"amplitude={peak_amplitude:.3f} stability={self.stability:.3f}",
+                    flush=True,
+                )
+
+        return beat_detected
+
+    def reset(self) -> None:
+        """Reset detector state."""
+        self._last_beat_distance = 1_000_000_000
+        self._max_peak_amplitude = -1.0
+        self.stability = 0.0
+        self.frame_count = 0

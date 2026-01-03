@@ -6,13 +6,14 @@ import time
 from dataclasses import dataclass
 from typing import TextIO
 
+import numpy as np
 import sounddevice as sd
 
 from plp_beat_service.audio import BLOCK_SIZE, SAMPLERATE
 from plp_beat_service.confidence import ConfidenceTracker
 from plp_beat_service.onset import OnsetEnvelopeTracker
 from plp_beat_service.osc import OSCOutput
-from plp_beat_service.peaks import PeakPicker
+from plp_beat_service.peaks import PeakPicker, PLPBeatDetector
 from plp_beat_service.plp import PLPTracker
 from plp_beat_service.state import BeatStateMachine, LockState
 from plp_beat_service.tempogram import StreamingTempogram
@@ -73,7 +74,7 @@ class PLPBeatService:
         self._debug_frame = 0
 
         # Pipeline components
-        self.onset_tracker = OnsetEnvelopeTracker(samplerate=samplerate, hop_length=BLOCK_SIZE)
+        self.onset_tracker = OnsetEnvelopeTracker(samplerate=samplerate, H=BLOCK_SIZE)
         self.tempogram = StreamingTempogram(
             samplerate=samplerate,
             hop_length=BLOCK_SIZE,
@@ -93,6 +94,8 @@ class PLPBeatService:
             tempo_max=bpm_max,
             debug=debug,
         )
+        # New PLP-based beat detector (uses peak distance method from reference)
+        self.beat_detector = PLPBeatDetector(prominence=0.01, debug=debug)
         self.state_machine = BeatStateMachine()
 
         # Output - OSC
@@ -189,8 +192,8 @@ class PLPBeatService:
         self._current_rms = rms
         self._peak_rms = self.onset_tracker.get_peak_rms()
 
-        # Tempo estimation
-        bpm, strength = self.tempogram.estimate_tempo()
+        # Tempo estimation (now returns complex coefficient too)
+        bpm, strength, _coefficient = self.tempogram.estimate_tempo()
 
         # Default values
         pulse = 0.0
@@ -200,16 +203,21 @@ class PLPBeatService:
         if bpm > 0 and strength > 0.01:
             self.current_bpm = bpm
 
-            # PLP pulse
-            pulse = self.plp.update(bpm, strength, onset_val)
+            # Get full tempogram for PLP kernel synthesis
+            Theta, X = self.tempogram.compute()
 
-            # Peak detection - pass onset and phase for combined detection
-            beat_detected = self.peak_picker.update(
-                pulse, bpm, onset_strength=onset_val, phase=self.plp.phase
+            # PLP pulse with kernel overlap-add
+            pulse = self.plp.update(Theta, X)
+
+            # Beat detection using peak distance method (from reference implementation)
+            beat_detected = self.beat_detector.detect_beat(
+                self.plp.get_normalized_buffer(),
+                self.plp._cursor,
+                self.plp._t,
             )
 
-            # Confidence tracking (energy-based model)
-            confidence = self.confidence_tracker.update(pulse, bpm, strength, onset_val)
+            # Confidence tracking (energy-based model with RMS silence gate)
+            confidence = self.confidence_tracker.update(pulse, bpm, strength, onset_val, rms)
             self.current_confidence = confidence
 
         # Debug logging every 20 frames (~1 second)
@@ -217,15 +225,17 @@ class PLPBeatService:
             phase = self.plp.phase
             phase_deg = phase * 180 / 3.14159
 
-            # Show all tempo candidates with raw autocorrelation
+            # Show all tempo candidates with magnitudes (tempogram is now complex)
             tempos, tgram = self.tempogram.compute()
-            # Show all tempos
-            all_str = " ".join(f"{int(tempos[i])}:{tgram[i]:.2f}" for i in range(len(tempos)))
+            magnitudes = np.abs(tgram)
+            # Show top 5 tempos by magnitude
+            top_indices = np.argsort(magnitudes)[-5:][::-1]
+            top_str = " ".join(f"{int(tempos[i])}:{magnitudes[i]:.1f}" for i in top_indices)
 
             print(
                 f"[debug] frame={self._debug_frame} onset={onset_val:.1f} "
                 f"bpm={bpm:.0f} pulse={pulse:.2f} phase={phase_deg:.0f}° "
-                f"tgram=[{all_str}]",
+                f"top=[{top_str}]",
                 flush=True,
             )
 

@@ -1,166 +1,94 @@
-"""Streaming tempogram computation for local tempo estimation."""
+"""Streaming tempogram computation using Fourier DFT at tempo frequencies."""
+
+from dataclasses import dataclass, field
 
 import numpy as np
 
 
+@dataclass
 class StreamingTempogram:
     """
-    Computes tempogram in streaming mode.
+    Computes Fourier tempogram in streaming mode.
 
-    Based on autocorrelation of onset envelope.
+    Based on DFT at tempo candidate frequencies (not autocorrelation).
+    Reference: ../real_time_plp/realtimeplp.py Tempogram class
     """
 
-    def __init__(
-        self,
-        samplerate: int = 44100,
-        hop_length: int = 512,
-        win_length: int = 768,  # ~8.9 seconds at 512 block size
-        tempo_min: int = 115,
-        tempo_max: int = 165,
-    ):
-        self.samplerate = samplerate
-        self.hop_length = hop_length
-        self.win_length = win_length
-        self.tempo_min = tempo_min
-        self.tempo_max = tempo_max
+    samplerate: int = 44100
+    hop_length: int = 512
+    win_length_sec: float = 6.0  # Window length in seconds
+    tempo_min: int = 115
+    tempo_max: int = 165
 
-        # Compute tempo range in lag samples
-        self.sr_tempo = samplerate / hop_length  # Tempo sample rate
-        # Use ceil for min (faster tempo = smaller lag) to not exceed tempo_max
-        # Use floor for max (slower tempo = larger lag) to not go below tempo_min
-        import math
+    # Derived attributes (set in __post_init__)
+    framerate: float = field(init=False)
+    win_length: int = field(init=False)
+    Theta: np.ndarray = field(init=False)  # Tempo candidates in BPM
+    _tempo_buffer: np.ndarray = field(init=False, repr=False)
+    _window: np.ndarray = field(init=False, repr=False)
 
-        self.lag_min = math.ceil(60 * self.sr_tempo / tempo_max)
-        self.lag_max = math.floor(60 * self.sr_tempo / tempo_min)
-
-        # State
-        self.onset_buffer: np.ndarray = np.zeros(win_length)
+    def __post_init__(self) -> None:
+        self.framerate = self.samplerate / self.hop_length
+        self.win_length = round(self.win_length_sec * self.framerate)
+        self.Theta = np.arange(self.tempo_min, self.tempo_max + 1, 1)
+        self._tempo_buffer = np.zeros(self.win_length)
+        self._window = np.hanning(self.win_length)
 
     def update(self, onset_strength: float) -> None:
-        """Add new onset strength value to buffer."""
-        self.onset_buffer = np.roll(self.onset_buffer, -1)
-        self.onset_buffer[-1] = onset_strength
+        """Add new onset strength using half-window causal method."""
+        # Half-window method: only roll left half, right stays zero
+        half = self.win_length // 2
+        left_half = self._tempo_buffer[:half]
+        left_half = np.roll(left_half, -1)
+        left_half[-1] = onset_strength
+        self._tempo_buffer[:half] = left_half
+        # Right half stays zero (no future data)
 
     def compute(self) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute tempogram from current buffer.
+        Compute Fourier tempogram using DFT at tempo frequencies.
 
         Returns:
-            (tempos, tempogram): Tempo values and corresponding strengths
+            (Theta, X): Tempo values (BPM) and complex DFT coefficients
         """
-        # Normalize onset envelope
-        env = self.onset_buffer - np.mean(self.onset_buffer)
-        env_std = np.std(env)
-        if env_std > 0:
-            env = env / env_std
+        L = self._tempo_buffer.shape[0]
+        m = np.arange(L) / self.framerate  # Time array in seconds
+        K = len(self.Theta)
+        X = np.zeros(K, dtype=np.complex128)
 
-        # Compute autocorrelation for tempo range
-        n_tempos = self.lag_max - self.lag_min + 1
-        tempogram = np.zeros(n_tempos)
+        for k in range(K):
+            omega = self.Theta[k] / 60  # Convert BPM to Hz
+            exponential = np.exp(-2 * np.pi * 1j * omega * m)
+            X[k] = np.sum(self._tempo_buffer * self._window * exponential)
 
-        for i, lag in enumerate(range(self.lag_min, self.lag_max + 1)):
-            if lag < len(env):
-                # Autocorrelation at this lag
-                tempogram[i] = np.sum(env[:-lag] * env[lag:]) / (len(env) - lag)
+        return self.Theta, X
 
-        # Convert lags to BPM
-        lags = np.arange(self.lag_min, self.lag_max + 1)
-        tempos = 60 * self.sr_tempo / lags
-
-        # Apply mild tempo prior: slight preference for middle of range
-        # Use wide Gaussian to avoid over-penalizing edge tempos
-        center_bpm = (self.tempo_min + self.tempo_max) / 2  # 140 for 115-165 range
-        sigma = 50.0  # Wider preference to not penalize edge tempos too much
-        tempo_prior = np.exp(-0.5 * ((tempos - center_bpm) / sigma) ** 2)
-        # Ensure minimum prior of 0.7 so no tempo is penalized more than 30%
-        tempo_prior = np.maximum(tempo_prior, 0.7)
-        tempogram = tempogram * tempo_prior
-
-        # Apply octave penalty to disambiguate half/double-time
-        tempogram = self._apply_octave_penalty(tempos, tempogram)
-
-        return tempos, tempogram
-
-    def _apply_octave_penalty(self, tempos: np.ndarray, tempogram: np.ndarray) -> np.ndarray:
+    def estimate_tempo(self) -> tuple[float, float, complex]:
         """
-        Penalize tempos whose half/double time is also strong.
-
-        If 120 BPM and 60 BPM are both strong, prefer 120 BPM.
-        If 120 BPM and 240 BPM are both strong, prefer 120 BPM.
-        """
-        result = tempogram.copy()
-
-        for i, tempo in enumerate(tempos):
-            # Check half-time
-            half_tempo = tempo / 2
-            if self.tempo_min <= half_tempo <= self.tempo_max:
-                half_idx = np.argmin(np.abs(tempos - half_tempo))
-                if np.abs(tempos[half_idx] - half_tempo) < 3.0:  # Within 3 BPM
-                    half_strength = tempogram[half_idx]
-                    # If half-time is nearly as strong, this might be double-time
-                    if half_strength > tempogram[i] * 0.6:
-                        result[i] *= 0.5  # Penalize potential double-time
-
-            # Check double-time
-            double_tempo = tempo * 2
-            if self.tempo_min <= double_tempo <= self.tempo_max:
-                double_idx = np.argmin(np.abs(tempos - double_tempo))
-                if np.abs(tempos[double_idx] - double_tempo) < 3.0:
-                    double_strength = tempogram[double_idx]
-                    # If double-time has significant energy, boost this tempo
-                    if double_strength > tempogram[i] * 0.4:
-                        result[i] *= 1.3  # Boost the "normal" tempo
-
-        return result
-
-    def estimate_tempo(self) -> tuple[float, float]:
-        """
-        Estimate dominant tempo from tempogram.
-
-        Uses parabolic interpolation for sub-sample peak accuracy.
+        Estimate dominant tempo from Fourier tempogram.
 
         Returns:
-            (bpm, strength): Estimated BPM and confidence
+            (bpm, strength, coefficient): BPM, magnitude, and complex coefficient
         """
-        tempos, tempogram = self.compute()
+        Theta, X = self.compute()
 
-        if len(tempogram) == 0 or np.max(tempogram) <= 0:
-            return 0.0, 0.0
+        if len(X) == 0:
+            return 0.0, 0.0, 0j
 
-        # Find peak
-        peak_idx = int(np.argmax(tempogram))
-        strength = tempogram[peak_idx]
+        magnitudes = np.abs(X)
+        peak_idx = int(np.argmax(magnitudes))
 
-        # Parabolic interpolation for sub-sample accuracy
-        # Only if we have neighbors on both sides
-        if 0 < peak_idx < len(tempogram) - 1:
-            y_prev = tempogram[peak_idx - 1]
-            y_peak = tempogram[peak_idx]
-            y_next = tempogram[peak_idx + 1]
+        bpm = float(Theta[peak_idx])
+        strength = float(magnitudes[peak_idx])
+        coefficient = X[peak_idx]
 
-            # Avoid division by zero
-            denom = y_prev - 2 * y_peak + y_next
-            if abs(denom) > 1e-10:
-                delta = 0.5 * (y_prev - y_next) / denom
-                # Clamp delta to reasonable range
-                delta = np.clip(delta, -0.5, 0.5)
-            else:
-                delta = 0.0
+        # Normalize strength to 0-1 range (based on window sum)
+        max_possible = np.sum(self._window)
+        if max_possible > 0:
+            strength = min(1.0, strength / max_possible)
 
-            # Interpolated lag
-            lag_int = self.lag_min + peak_idx
-            lag_interp = lag_int + delta
-
-            # Convert interpolated lag to BPM
-            bpm = 60 * self.sr_tempo / lag_interp
-        else:
-            bpm = tempos[peak_idx]
-
-        # Normalize strength to 0-1
-        strength = float(np.clip(strength, 0, 1))
-
-        return float(bpm), strength
+        return bpm, strength, coefficient
 
     def reset(self) -> None:
         """Reset tempogram state."""
-        self.onset_buffer.fill(0)
+        self._tempo_buffer.fill(0)

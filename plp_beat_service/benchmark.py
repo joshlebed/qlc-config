@@ -12,7 +12,7 @@ from plp_beat_service.audio import BLOCK_SIZE
 from plp_beat_service.confidence import ConfidenceTracker
 from plp_beat_service.file_source import FileAudioSource
 from plp_beat_service.onset import OnsetEnvelopeTracker
-from plp_beat_service.peaks import PeakPicker
+from plp_beat_service.peaks import PLPBeatDetector
 from plp_beat_service.plp import PLPTracker
 from plp_beat_service.state import BeatStateMachine
 from plp_beat_service.tempogram import StreamingTempogram
@@ -222,25 +222,22 @@ def benchmark(
 
     # Initialize pipeline
     # Note: hop_length must match the actual block size we're processing
-    onset_tracker = OnsetEnvelopeTracker(samplerate=source.sr, hop_length=BLOCK_SIZE)
+    onset_tracker = OnsetEnvelopeTracker(samplerate=int(source.sr), H=BLOCK_SIZE)
     tempogram = StreamingTempogram(
-        samplerate=source.sr,
+        samplerate=int(source.sr),
         hop_length=BLOCK_SIZE,
         tempo_min=bpm_min,
         tempo_max=bpm_max,
     )
     plp = PLPTracker(
-        samplerate=source.sr,
+        samplerate=int(source.sr),
         hop_length=BLOCK_SIZE,
         tempo_min=bpm_min,
         tempo_max=bpm_max,
     )
     confidence_tracker = ConfidenceTracker()
-    peak_picker = PeakPicker(
-        samplerate=source.sr,
-        hop_length=BLOCK_SIZE,
-        tempo_max=bpm_max,
-    )
+    # New PLP-based beat detector (uses peak distance method from reference)
+    beat_detector = PLPBeatDetector(prominence=0.01, debug=debug)
     state_machine = BeatStateMachine()
 
     # Open recording file if requested
@@ -278,29 +275,36 @@ def benchmark(
         current_time = frame_count * BLOCK_SIZE / source.sr
 
         # Onset envelope - now returns (onset_array, rms)
-        onset_result, _rms = onset_tracker.process(chunk)
+        onset_result, rms = onset_tracker.process(chunk)
         onset_val = float(onset_result[0])
         tempogram.update(onset_val)
-        bpm, strength = tempogram.estimate_tempo()
+        bpm, strength, _coefficient = tempogram.estimate_tempo()
 
         # Default values for when tempo is not valid
         pulse = 0.0
         beat_detected = False
         confidence = 0.0
 
-        if bpm > 0 and strength > 0.1:
+        if bpm > 0 and strength > 0.01:
             bpm_estimates.append(bpm)
-            pulse = plp.update(bpm, strength, onset_val)
 
-            # Check for raw peak (pass onset and phase for combined detection)
-            beat_detected = peak_picker.update(
-                pulse, bpm, onset_strength=onset_val, phase=plp.phase
+            # Get full tempogram for PLP kernel synthesis
+            Theta, X = tempogram.compute()
+
+            # PLP pulse with kernel overlap-add
+            pulse = plp.update(Theta, X)
+
+            # Beat detection using peak distance method (from reference implementation)
+            beat_detected = beat_detector.detect_beat(
+                plp.get_normalized_buffer(),
+                plp._cursor,
+                plp._t,
             )
             if beat_detected:
                 raw_beat_count += 1
 
-            # Update confidence (energy-based model)
-            confidence = confidence_tracker.update(pulse, bpm, strength, onset_val)
+            # Update confidence (energy-based model with RMS silence gate)
+            confidence = confidence_tracker.update(pulse, bpm, strength, onset_val, rms)
             confidence_samples.append(confidence)
 
             if debug and beat_detected:

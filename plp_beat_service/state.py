@@ -95,8 +95,18 @@ class BeatStateMachine:
                     if now - self.last_beat_time >= min_interval:
                         should_emit = True
                         self.last_beat_time = now
-                    # Slowly adjust BPM toward detected (even if beat not emitted)
-                    self.locked_bpm = self.locked_bpm * 0.95 + bpm * 0.05
+
+                    # Adaptive BPM adjustment - faster when BPM changes significantly
+                    bpm_diff = abs(bpm - self.locked_bpm)
+                    if bpm_diff > 10:
+                        # Large BPM change detected - adapt faster
+                        # This helps when switching tracks (e.g., 145->124 BPM)
+                        weight = 0.3
+                    elif bpm_diff > 5:
+                        weight = 0.15
+                    else:
+                        weight = 0.05  # Normal slow adjustment
+                    self.locked_bpm = self.locked_bpm * (1 - weight) + bpm * weight
             else:
                 self.consecutive_bad += 1
                 if self.consecutive_bad >= 2:

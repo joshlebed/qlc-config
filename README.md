@@ -24,7 +24,8 @@ This repository contains:
 | Path | Description |
 |------|-------------|
 | `qlcplus/` | Python package for WebSocket API control |
-| `plp_beat_service/` | **Current** PLP-based beat detection service |
+| `plp_beat_service/` | **Current** PLP-based beat detection service (needs improvement) |
+| `../real_time_plp/` | **Reference** - Official real-time PLP implementation (sibling directory) |
 | `test_data/` | Ground-truth beat data from rekordbox (JSON + audio) |
 | `sample_data/` | Test audio files with known BPM (118-155 range) |
 | `spotlight.qxw` | QLC+ project file (scenes, fixtures, virtual console) |
@@ -36,6 +37,33 @@ This repository contains:
 | `osc_control.py` | **Deprecated** - legacy OSC control |
 
 See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the beat detection system.
+
+### PLP Reference Implementation
+
+The `plp_beat_service/` implementation has performance issues (jitter, BPM inaccuracy). A reference implementation is available as a sibling directory:
+
+```
+../real_time_plp/           # Clone of https://github.com/groupmm/real_time_plp
+├── realtimeplp.py          # Core algorithm - Fourier tempogram + kernel overlap-add
+├── beatcli.py              # Live audio beat tracking demo
+├── examples.ipynb          # Visualizations and explanations
+└── wav2controlsignals.py   # File-based processing
+```
+
+**Key differences from current implementation:**
+- Uses **Fourier tempogram** (not autocorrelation) for sharper tempo peaks
+- Implements **sinusoidal kernel overlap-add** for smooth pulse curves
+- Extracts **phase from DFT** instead of heuristic phase correction
+- Proper **half-window causal constraint** for real-time operation
+
+To set up the reference (if not already present):
+```bash
+git clone https://github.com/groupmm/real_time_plp.git ../real_time_plp
+```
+
+Papers:
+- [Real-Time Beat Tracking (TISMIR 2024)](https://transactions.ismir.net/articles/10.5334/tismir.189)
+- [Real-Time Control Signals (DAFx 2024)](https://dafx2024.org/papers/DAFx24_paper_36.pdf)
 
 ## Architecture
 

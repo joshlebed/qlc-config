@@ -46,6 +46,7 @@ HAVE_AUBIO = False
 
 try:
     import aubio
+
     HAVE_AUBIO = True
 except ImportError:
     pass
@@ -60,8 +61,8 @@ if not HAVE_AUBIO:
 # =============================================================================
 
 SAMPLERATE = 44100
-BLOCK_SIZE = 512          # ~11.6ms per block
-CHANNELS = 2              # Stereo input (mixed to mono internally)
+BLOCK_SIZE = 512  # ~11.6ms per block
+CHANNELS = 2  # Stereo input (mixed to mono internally)
 
 # Kick drum emphasis filter (30-200 Hz bandpass for fast techno)
 KICK_LOW_HZ = 30
@@ -69,16 +70,16 @@ KICK_HIGH_HZ = 200
 
 # PLL / Phase tracking
 MIN_BPM = 100
-MAX_BPM = 180             # Support faster techno
-BEATS_TO_LOCK = 6         # Fewer beats needed to lock
-PHASE_TOLERANCE = 0.30    # Accept beats within 30% of expected phase (more tolerant)
-BPM_TOLERANCE = 0.15      # 15% BPM variation allowed when locked
+MAX_BPM = 180  # Support faster techno
+BEATS_TO_LOCK = 6  # Fewer beats needed to lock
+PHASE_TOLERANCE = 0.30  # Accept beats within 30% of expected phase (more tolerant)
+BPM_TOLERANCE = 0.15  # 15% BPM variation allowed when locked
 
 # Timeout and adaptation
-BEAT_TIMEOUT_BEATS = 6    # Lose lock after this many missed beats
+BEAT_TIMEOUT_BEATS = 6  # Lose lock after this many missed beats
 TEMPO_CHANGE_THRESHOLD = 0.25  # 25% BPM change triggers reset (more tolerant)
-TEMPO_CHANGE_BEATS = 5    # Consecutive beats at different tempo to trigger reset
-MAX_BEAT_AGE = 15.0       # Ignore beats older than this (seconds)
+TEMPO_CHANGE_BEATS = 5  # Consecutive beats at different tempo to trigger reset
+MAX_BEAT_AGE = 15.0  # Ignore beats older than this (seconds)
 
 # MIDI
 MIDI_CLOCK = 0xF8
@@ -86,21 +87,22 @@ MIDI_START = 0xFA
 MIDI_STOP = 0xFC
 MIDI_NOTE_ON = 0x90
 MIDI_NOTE_OFF = 0x80
-PPQN = 24                 # Pulses per quarter note
+PPQN = 24  # Pulses per quarter note
 
 
 class LockState(Enum):
     SEARCHING = "SEARCHING"  # Looking for consistent beats
-    LOCKING = "LOCKING"      # Found beats, building confidence
-    LOCKED = "LOCKED"        # Stable tempo, outputting clock
+    LOCKING = "LOCKING"  # Found beats, building confidence
+    LOCKED = "LOCKED"  # Stable tempo, outputting clock
 
 
 @dataclass
 class BeatInfo:
     """Information about a detected beat."""
-    timestamp: float        # When the beat was detected
-    confidence: float       # Detection confidence (0-1)
-    bpm: float             # Instantaneous BPM estimate
+
+    timestamp: float  # When the beat was detected
+    confidence: float  # Detection confidence (0-1)
+    bpm: float  # Instantaneous BPM estimate
 
 
 class KickFilter:
@@ -113,7 +115,7 @@ class KickFilter:
         high = min(KICK_HIGH_HZ / nyquist, 0.99)
 
         # 4th order Butterworth bandpass
-        self.b, self.a = signal.butter(4, [low, high], btype='band')
+        self.b, self.a = signal.butter(4, [low, high], btype="band")
         # Initialize filter state (scale by 0 for zero initial conditions)
         self.zi = signal.lfilter_zi(self.b, self.a) * 0.0
 
@@ -165,7 +167,7 @@ class PhaseLockLoop:
             return
 
         # Filter to valid intervals
-        valid = [i for i in self.intervals if 60/MAX_BPM < i < 60/MIN_BPM]
+        valid = [i for i in self.intervals if 60 / MAX_BPM < i < 60 / MIN_BPM]
         if len(valid) >= 3:
             # Use median for robustness
             median_interval = np.median(valid)
@@ -200,7 +202,7 @@ class PhaseLockLoop:
             # Apply 10% of that drift as correction = 0.5% BPM adjustment
             correction = mean_error / self.beat_period() * 0.10
             correction = np.clip(correction, -0.01, 0.01)  # Max 1% per cycle
-            self.bpm *= (1 - correction)
+            self.bpm *= 1 - correction
             self.bpm = np.clip(self.bpm, MIN_BPM, MAX_BPM)
 
     def check_timeout(self) -> bool:
@@ -266,7 +268,7 @@ class PhaseLockLoop:
             self._last_debug = f"err={error:.3f}s tol={tolerance:.3f}s int={interval:.3f}s"
 
             # Accept if within tolerance OR if interval is valid
-            valid_interval = 60/MAX_BPM < interval < 60/MIN_BPM
+            valid_interval = 60 / MAX_BPM < interval < 60 / MIN_BPM
 
             if abs(error) < tolerance or valid_interval:
                 # Accept beat and update tracking
@@ -303,10 +305,12 @@ class PhaseLockLoop:
             expected = self.predict_next_beat()
             error = now - expected  # Positive = late, negative = early
             tolerance = self.beat_period() * PHASE_TOLERANCE
-            valid_interval = 60/MAX_BPM < interval < 60/MIN_BPM
+            valid_interval = 60 / MAX_BPM < interval < 60 / MIN_BPM
             instant_bpm = 60.0 / interval if interval > 0.1 else 0.0
 
-            self._last_debug = f"err={error:.3f}s tol={tolerance:.3f}s int={interval:.3f}s ibpm={instant_bpm:.1f}"
+            self._last_debug = (
+                f"err={error:.3f}s tol={tolerance:.3f}s int={interval:.3f}s ibpm={instant_bpm:.1f}"
+            )
 
             # Check for tempo change - ONLY for valid intervals (not spurious detections)
             if valid_interval and instant_bpm > 0 and self.bpm > 0:
@@ -400,7 +404,7 @@ class BeatDetector:
         # Use energy-based onset for kick drums
         self.onset = aubio.onset(method, win_s, hop_s, samplerate)
         self.onset.set_threshold(0.3)  # Moderate threshold to catch kicks
-        self.onset.set_silence(-50)    # dB threshold below which onsets are ignored
+        self.onset.set_silence(-50)  # dB threshold below which onsets are ignored
 
         # Minimum interval between beats (based on MAX_BPM)
         self.min_interval = 60.0 / MAX_BPM * 0.8  # 80% of minimum beat period
@@ -430,10 +434,7 @@ class BeatDetector:
             # Compute BPM from median of recent intervals
             if len(self.intervals) >= 3:
                 # Filter to valid range and take median
-                valid_intervals = [
-                    i for i in self.intervals
-                    if 60/MAX_BPM < i < 60/MIN_BPM
-                ]
+                valid_intervals = [i for i in self.intervals if 60 / MAX_BPM < i < 60 / MIN_BPM]
                 if valid_intervals:
                     median_interval = np.median(valid_intervals)
                     bpm = 60.0 / median_interval
@@ -442,11 +443,13 @@ class BeatDetector:
             else:
                 bpm = 60.0 / interval if interval > 0.1 else 0.0
 
-            beats.append(BeatInfo(
-                timestamp=now,
-                confidence=1.0,  # Onset detection gives binary result
-                bpm=bpm
-            ))
+            beats.append(
+                BeatInfo(
+                    timestamp=now,
+                    confidence=1.0,  # Onset detection gives binary result
+                    bpm=bpm,
+                )
+            )
 
         return beats
 
@@ -567,7 +570,7 @@ class BeatToMidi:
                 self.beats_rejected += 1
                 # Debug: show rejected beats
                 if self.debug:
-                    pll_debug = getattr(self.pll, '_last_debug', '')
+                    pll_debug = getattr(self.pll, "_last_debug", "")
                     print(
                         f"  [rejected] PLL: {self.pll.bpm:5.1f} | {pll_debug}",
                         flush=True,
@@ -596,7 +599,9 @@ class BeatToMidi:
         if not self.note_mode and self.pll.state == LockState.LOCKED:
             # Send 24 clock pulses distributed between beats
             # But only when we actually detected a beat this callback
-            if beats and any(self.pll.process_beat(b.timestamp) for b in []):  # Already processed above
+            if beats and any(
+                self.pll.process_beat(b.timestamp) for b in []
+            ):  # Already processed above
                 pass  # Clock pulses sent on beat detection
             # For continuous clock, uncomment below:
             # now = time.time()
@@ -618,7 +623,9 @@ class BeatToMidi:
         print(f"Sample rate: {self.samplerate} Hz")
         print(f"Mode: {'Note On/Off' if self.note_mode else 'MIDI Clock (24 PPQN)'}")
         print(f"BPM range: {MIN_BPM}-{MAX_BPM}")
-        print(f"Kick filter: {'disabled' if self.no_filter else f'{KICK_LOW_HZ}-{KICK_HIGH_HZ} Hz bandpass'}")
+        print(
+            f"Kick filter: {'disabled' if self.no_filter else f'{KICK_LOW_HZ}-{KICK_HIGH_HZ} Hz bandpass'}"
+        )
         print(f"Debug: {'enabled' if self.debug else 'disabled'}")
         print("\nListening for beats...")
         print("States: ? = SEARCHING, ~ = LOCKING, * = LOCKED")
@@ -634,6 +641,7 @@ class BeatToMidi:
         except Exception as e:
             print(f"Error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             self.cleanup()
@@ -657,16 +665,20 @@ class BeatToMidi:
             raise FileNotFoundError(f"Audio file not found: {self.file_path}")
 
         # Read WAV file
-        with wave.open(str(path), 'rb') as wf:
+        with wave.open(str(path), "rb") as wf:
             channels = wf.getnchannels()
             sample_width = wf.getsampwidth()
             file_rate = wf.getframerate()
             n_frames = wf.getnframes()
 
-            print(f"File: {channels} ch, {file_rate} Hz, {n_frames} frames ({n_frames/file_rate:.1f}s)")
+            print(
+                f"File: {channels} ch, {file_rate} Hz, {n_frames} frames ({n_frames / file_rate:.1f}s)"
+            )
 
             if file_rate != self.samplerate:
-                print(f"Warning: File sample rate ({file_rate}) differs from expected ({self.samplerate})")
+                print(
+                    f"Warning: File sample rate ({file_rate}) differs from expected ({self.samplerate})"
+                )
 
             # Process in blocks
             while self.running:
@@ -689,7 +701,7 @@ class BeatToMidi:
 
                 # Pad to BLOCK_SIZE if needed
                 if len(data) < BLOCK_SIZE:
-                    data = np.pad(data, (0, BLOCK_SIZE - len(data)), mode='constant')
+                    data = np.pad(data, (0, BLOCK_SIZE - len(data)), mode="constant")
 
                 # Reshape to (frames, channels)
                 if channels > 1:
@@ -712,7 +724,9 @@ class BeatToMidi:
         total = self.beats_accepted + self.beats_rejected
         if total > 0:
             accept_rate = self.beats_accepted / total * 100
-            print(f"\nStats: {self.beats_accepted} accepted, {self.beats_rejected} rejected ({accept_rate:.1f}% accept rate)")
+            print(
+                f"\nStats: {self.beats_accepted} accepted, {self.beats_rejected} rejected ({accept_rate:.1f}% accept rate)"
+            )
         print("Cleaned up")
 
 
@@ -721,10 +735,12 @@ def list_devices() -> None:
     print("Available audio input devices:\n")
     devices = sd.query_devices()
     for i, dev in enumerate(devices):
-        if dev['max_input_channels'] > 0:
+        if dev["max_input_channels"] > 0:
             default = " (default)" if i == sd.default.device[0] else ""
             print(f"  {i}: {dev['name']}{default}")
-            print(f"      Channels: {dev['max_input_channels']}, Sample Rate: {dev['default_samplerate']}")
+            print(
+                f"      Channels: {dev['max_input_channels']}, Sample Rate: {dev['default_samplerate']}"
+            )
     print()
 
 
@@ -734,23 +750,27 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--device", "-d",
+        "--device",
+        "-d",
         type=int,
         default=None,
         help="Audio device index (use --list-devices to see options)",
     )
     parser.add_argument(
-        "--list-devices", "-l",
+        "--list-devices",
+        "-l",
         action="store_true",
         help="List available audio devices and exit",
     )
     parser.add_argument(
-        "--note-mode", "-n",
+        "--note-mode",
+        "-n",
         action="store_true",
         help="Send Note On/Off instead of MIDI Clock",
     )
     parser.add_argument(
-        "--samplerate", "-r",
+        "--samplerate",
+        "-r",
         type=int,
         default=SAMPLERATE,
         help=f"Audio sample rate (default: {SAMPLERATE})",
@@ -766,7 +786,8 @@ def main() -> None:
         help="Show raw aubio BPM estimates for debugging",
     )
     parser.add_argument(
-        "--file", "-f",
+        "--file",
+        "-f",
         type=str,
         default=None,
         help="Process audio from WAV file instead of microphone",
