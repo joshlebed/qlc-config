@@ -360,7 +360,7 @@ uv run ruff check .
 uv run ruff format .
 
 # Run type checker
-uv run mypy qlcplus/
+uv run ty check qlcplus/
 
 # Run tests
 uv run pytest
