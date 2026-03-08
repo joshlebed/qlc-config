@@ -22,6 +22,7 @@ MODES: dict[str, int] = {
     "blue": 8,
     "purple": 9,
     "pink": 10,
+    "yellow_pretty": 16,
 }
 
 # Beat-reactive chaser (controlled via Cue List with MIDI input)
