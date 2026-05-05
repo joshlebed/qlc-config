@@ -2,6 +2,8 @@
 
 Python client library and configuration for controlling QLC+ lighting software via WebSocket API.
 
+> **Deployed in the homelab**: QLC+ daemon runs on `mediaserver` (`192.168.0.221`), reached via WebSocket on port 9999 from the Pi's `volume-control` service and from HA automations. Cross-cutting infra (network, hosts, SSH, dev workflow) lives in [`homelab-infra`](https://github.com/joshlebed/homelab-infra).
+
 ## Quick Start
 
 ```bash
