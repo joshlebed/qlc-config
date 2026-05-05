@@ -1,8 +1,13 @@
 # QLC+ Lighting Control
 
-Python client library and configuration for controlling QLC+ lighting software via WebSocket API.
+Python client library and configuration for controlling QLC+ lighting software
+via WebSocket API.
 
-> **Deployed in the homelab**: QLC+ daemon runs on `mediaserver` (`192.168.0.221`), reached via WebSocket on port 9999 from the Pi's `volume-control` service and from HA automations. Cross-cutting infra (network, hosts, SSH, dev workflow) lives in [`homelab-infra`](https://github.com/joshlebed/homelab-infra).
+> **Deployed in the homelab**: QLC+ daemon runs on `mediaserver`
+> (`192.168.0.221`), reached via WebSocket on port 9999 from the Pi's
+> `volume-control` service and from HA automations. Cross-cutting infra
+> (network, hosts, SSH, dev workflow) lives in
+> [`homelab-infra`](https://github.com/joshlebed/homelab-infra).
 
 ## Quick Start
 
@@ -23,26 +28,28 @@ qlc off      # Turn light off
 
 This repository contains:
 
-| Path | Description |
-|------|-------------|
-| `qlcplus/` | Python package for WebSocket API control |
-| `plp_beat_service/` | **Current** PLP-based beat detection service (needs improvement) |
+| Path                | Description                                                               |
+| ------------------- | ------------------------------------------------------------------------- |
+| `qlcplus/`          | Python package for WebSocket API control                                  |
+| `plp_beat_service/` | **Current** PLP-based beat detection service (needs improvement)          |
 | `../real_time_plp/` | **Reference** - Official real-time PLP implementation (sibling directory) |
-| `test_data/` | Ground-truth beat data from rekordbox (JSON + audio) |
-| `sample_data/` | Test audio files with known BPM (118-155 range) |
-| `spotlight.qxw` | QLC+ project file (scenes, fixtures, virtual console) |
-| `ws_control.py` | CLI tool for controlling lights |
-| `qlcplus.service` | Systemd service for QLC+ headless operation |
-| `plp-beat.service` | Systemd service for beat detection |
-| `beat_to_midi.py` | **Deprecated** - use `plp_beat_service` instead |
-| `audio_reactive.py` | **Deprecated** - legacy direct DMX control |
-| `osc_control.py` | **Deprecated** - legacy OSC control |
+| `test_data/`        | Ground-truth beat data from rekordbox (JSON + audio)                      |
+| `sample_data/`      | Test audio files with known BPM (118-155 range)                           |
+| `spotlight.qxw`     | QLC+ project file (scenes, fixtures, virtual console)                     |
+| `ws_control.py`     | CLI tool for controlling lights                                           |
+| `qlcplus.service`   | Systemd service for QLC+ headless operation                               |
+| `plp-beat.service`  | Systemd service for beat detection                                        |
+| `beat_to_midi.py`   | **Deprecated** - use `plp_beat_service` instead                           |
+| `audio_reactive.py` | **Deprecated** - legacy direct DMX control                                |
+| `osc_control.py`    | **Deprecated** - legacy OSC control                                       |
 
-See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the beat detection system.
+See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the
+beat detection system.
 
 ### PLP Reference Implementation
 
-The `plp_beat_service/` implementation has performance issues (jitter, BPM inaccuracy). A reference implementation is available as a sibling directory:
+The `plp_beat_service/` implementation has performance issues (jitter, BPM
+inaccuracy). A reference implementation is available as a sibling directory:
 
 ```
 ../real_time_plp/           # Clone of https://github.com/groupmm/real_time_plp
@@ -53,17 +60,20 @@ The `plp_beat_service/` implementation has performance issues (jitter, BPM inacc
 ```
 
 **Key differences from current implementation:**
+
 - Uses **Fourier tempogram** (not autocorrelation) for sharper tempo peaks
 - Implements **sinusoidal kernel overlap-add** for smooth pulse curves
 - Extracts **phase from DFT** instead of heuristic phase correction
 - Proper **half-window causal constraint** for real-time operation
 
 To set up the reference (if not already present):
+
 ```bash
 git clone https://github.com/groupmm/real_time_plp.git ../real_time_plp
 ```
 
 Papers:
+
 - [Real-Time Beat Tracking (TISMIR 2024)](https://transactions.ismir.net/articles/10.5334/tismir.189)
 - [Real-Time Control Signals (DAFx 2024)](https://dafx2024.org/papers/DAFx24_paper_36.pdf)
 
@@ -130,21 +140,21 @@ with QLCPlusClient(host="192.168.0.221") as client:
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QLCPLUS_HOST` | `192.168.0.221` | QLC+ server IP address |
-| `QLCPLUS_WS_PORT` | `9999` | WebSocket port |
+| Variable          | Default         | Description            |
+| ----------------- | --------------- | ---------------------- |
+| `QLCPLUS_HOST`    | `192.168.0.221` | QLC+ server IP address |
+| `QLCPLUS_WS_PORT` | `9999`          | WebSocket port         |
 
 ### Function IDs
 
 These IDs are defined in `spotlight.qxw` and correspond to QLC+ Scene functions:
 
-| ID | Name | Description |
-|----|------|-------------|
-| 0 | `mode_off` | All DMX channels to 0 |
-| 1 | `mode_white` | RGBW all at 100%, dimmer 100% |
-| 2 | `mode_red` | Red 100%, dimmer 100% |
-| 3 | `mode_yellow` | Red + Green 100%, dimmer 100% |
+| ID  | Name          | Description                   |
+| --- | ------------- | ----------------------------- |
+| 0   | `mode_off`    | All DMX channels to 0         |
+| 1   | `mode_white`  | RGBW all at 100%, dimmer 100% |
+| 2   | `mode_red`    | Red 100%, dimmer 100%         |
+| 3   | `mode_yellow` | Red + Green 100%, dimmer 100% |
 
 ### Mutual Exclusion Pattern
 
@@ -184,14 +194,15 @@ def set_mode(mode: str) -> None:
 - **DMX Mode**: 6 Channel
 - **DMX Address**: 1
 - **Channels**:
+
   | Channel | Function | Range |
-  |---------|----------|-------|
-  | 1 | Red | 0-255 |
-  | 2 | Green | 0-255 |
-  | 3 | Blue | 0-255 |
-  | 4 | White | 0-255 |
-  | 5 | Dimmer | 0-255 |
-  | 6 | Strobe | 0-255 |
+  | ------- | -------- | ----- |
+  | 1       | Red      | 0-255 |
+  | 2       | Green    | 0-255 |
+  | 3       | Blue     | 0-255 |
+  | 4       | White    | 0-255 |
+  | 5       | Dimmer   | 0-255 |
+  | 6       | Strobe   | 0-255 |
 
 ## Server Setup
 
@@ -254,6 +265,7 @@ Use the helper script for easy management:
 ```
 
 **Service features:**
+
 - Runs headless with xvfb (no monitor needed)
 - WebSocket API enabled on port 9999
 - Starts in operate mode (ready to receive commands)
@@ -261,11 +273,16 @@ Use the helper script for easy management:
 - Logs to journald
 
 **Important systemd notes:**
-- Do NOT use `ProtectSystem=strict` or `ProtectHome=read-only` - they break QLC+'s web server initialization
-- The service uses `RuntimeDirectory=qlcplus` to provide a writable XDG_RUNTIME_DIR
-- `StartLimitIntervalSec` and `StartLimitBurst` must be in the `[Unit]` section, not `[Service]`
+
+- Do NOT use `ProtectSystem=strict` or `ProtectHome=read-only` - they break
+  QLC+'s web server initialization
+- The service uses `RuntimeDirectory=qlcplus` to provide a writable
+  XDG_RUNTIME_DIR
+- `StartLimitIntervalSec` and `StartLimitBurst` must be in the `[Unit]` section,
+  not `[Service]`
 
 **Manual systemd commands:**
+
 ```bash
 sudo systemctl start qlcplus    # Start
 sudo systemctl stop qlcplus     # Stop
@@ -276,9 +293,11 @@ journalctl -u qlcplus -f        # Live logs
 
 ### Beat Detection Service (PLP)
 
-The PLP beat detection service runs as a separate systemd service, detecting beats from audio input and sending MIDI notes to QLC+.
+The PLP beat detection service runs as a separate systemd service, detecting
+beats from audio input and sending MIDI notes to QLC+.
 
 **Makefile commands (recommended):**
+
 ```bash
 make beat-install    # One-time setup: install systemd service
 make beat-start      # Start beat detection
@@ -292,11 +311,13 @@ make beat-debug      # Show debug console URL
 **Debug console:**
 
 The service includes a real-time browser-based visualization:
+
 - Open `http://192.168.0.221:8080/debug.html` in a browser
 - Shows onset envelope, PLP pulse curve, and confidence metrics
 - Displays current BPM, state (SEARCHING/LOCKED/HOLDOVER), and beat count
 
 **Manual testing:**
+
 ```bash
 make plp             # Run manually with OSC output
 make plp-midi        # Run manually with MIDI note output
@@ -304,6 +325,7 @@ make plp-devices     # List available audio devices
 ```
 
 **Manual systemd commands:**
+
 ```bash
 sudo systemctl start plp-beat    # Start
 sudo systemctl stop plp-beat     # Stop
@@ -314,7 +336,8 @@ journalctl -u plp-beat -f        # Live logs
 
 ## GUI Configuration
 
-QLC+ requires a GUI session for initial setup. After configuration, it runs headless.
+QLC+ requires a GUI session for initial setup. After configuration, it runs
+headless.
 
 ### X11 Forwarding (from macOS)
 
@@ -400,7 +423,8 @@ uv run pytest
 
 ### Ground Truth Data (`test_data/`)
 
-The `test_data/` directory contains audio files with **precise beat grid data** from rekordbox analysis:
+The `test_data/` directory contains audio files with **precise beat grid data**
+from rekordbox analysis:
 
 ```bash
 # Run benchmark on a single file (--simulate-room required for accurate results)
@@ -414,9 +438,13 @@ for f in test_data/*.mp3; do
 done
 ```
 
-**Note**: The `--simulate-room` flag is required for file-based benchmarks to match live microphone performance. It applies room acoustics simulation (lowpass filter, compression, level reduction) that compensates for the difference between direct file input and mic capture.
+**Note**: The `--simulate-room` flag is required for file-based benchmarks to
+match live microphone performance. It applies room acoustics simulation (lowpass
+filter, compression, level reduction) that compensates for the difference
+between direct file input and mic capture.
 
 Each track has a JSON file with ground-truth beat times:
+
 ```json
 {
   "bpm": 140.0,
@@ -430,7 +458,8 @@ See `test_data/README.md` for the full format and evaluation code.
 
 ### Legacy Sample Data (`sample_data/`)
 
-The `sample_data/` directory contains older test files with BPM in the filename (e.g., `underworld_dark_and_long_135.mp3`).
+The `sample_data/` directory contains older test files with BPM in the filename
+(e.g., `underworld_dark_and_long_135.mp3`).
 
 ## Troubleshooting
 
@@ -448,7 +477,9 @@ ss -tln | grep 9999
 curl -s http://192.168.0.221:9999/
 ```
 
-**After service restart**: The WebSocket server takes ~3 seconds to initialize. If you get "Connection refused" immediately after `make restart`, wait and retry.
+**After service restart**: The WebSocket server takes ~3 seconds to initialize.
+If you get "Connection refused" immediately after `make restart`, wait and
+retry.
 
 ### Project File Changes Not Taking Effect
 
@@ -484,7 +515,8 @@ uv run python ws_control.py --status
 
 ### Scenes Not Responding (Simple Desk Override)
 
-If scenes activate but the light doesn't change, Simple Desk may be overriding them:
+If scenes activate but the light doesn't change, Simple Desk may be overriding
+them:
 
 1. Open QLC+ GUI: `make gui`
 2. Go to Simple Desk tab
@@ -496,12 +528,14 @@ Simple Desk values take priority over scenes when non-zero.
 ### Buttons Not Working in Virtual Console
 
 Ensure QLC+ is in **Operate Mode**, not Design Mode:
+
 - Press the "play" button in the toolbar, or
 - Start with `-p` flag (the systemd service does this)
 
 ### Solo Frame Not Working via API
 
-QLC+ Solo Frames only enforce mutual exclusivity for **GUI clicks**, not WebSocket/OSC commands. The client must implement exclusivity:
+QLC+ Solo Frames only enforce mutual exclusivity for **GUI clicks**, not
+WebSocket/OSC commands. The client must implement exclusivity:
 
 ```python
 # Stop all other modes before starting the new one
@@ -524,6 +558,7 @@ For smooth color transitions (not abrupt jumps):
 5. Set Hold time for how long each color stays solid
 
 Example in project file:
+
 ```xml
 <Function ID="4" Type="Chaser" Name="mode_fade">
   <SpeedModes FadeIn="PerStep" FadeOut="PerStep" Duration="Common"/>
@@ -534,28 +569,28 @@ Example in project file:
 
 ## File Reference
 
-| File | Purpose |
-|------|---------|
-| `qlcplus/__init__.py` | Package exports (`QLCPlusClient`, `QLCPlusError`) |
-| `qlcplus/client.py` | WebSocket client implementation |
-| `qlcplus/py.typed` | PEP 561 marker for type checking |
-| `plp_beat_service/` | PLP beat detection service package |
-| `plp_beat_service/benchmark.py` | File-based beat detection testing (faster than real-time) |
-| `plp_beat_service/debug_server.py` | WebSocket debug server for visualization |
-| `plp_beat_service/static/debug.html` | Browser-based debug console |
-| `plp-beat.service` | Systemd unit file for beat detection |
-| `test_data/` | Ground-truth beat data from rekordbox (JSON + MP3) |
-| `preprocess_rekordbox.py` | Generate test_data from rekordbox XML export |
-| `ws_control.py` | CLI tool using WebSocket API |
-| `spotlight.qxw` | QLC+ project file (XML) |
-| `qlcplus.service` | Systemd unit file for QLC+ headless operation |
-| `qlc-service.sh` | Helper script for QLC+ service management |
-| `pyproject.toml` | Package metadata and tool configuration |
-| `uv.lock` | Locked dependencies for reproducible installs |
-| `BEAT_DETECTION.md` | Technical docs for beat detection system |
-| `beat_to_midi.py` | **Deprecated** - aubio+PLL approach, replaced by plp_beat_service |
-| `audio_reactive.py` | **Deprecated** - direct DMX control |
-| `osc_control.py` | **Deprecated** - OSC control |
+| File                                 | Purpose                                                           |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `qlcplus/__init__.py`                | Package exports (`QLCPlusClient`, `QLCPlusError`)                 |
+| `qlcplus/client.py`                  | WebSocket client implementation                                   |
+| `qlcplus/py.typed`                   | PEP 561 marker for type checking                                  |
+| `plp_beat_service/`                  | PLP beat detection service package                                |
+| `plp_beat_service/benchmark.py`      | File-based beat detection testing (faster than real-time)         |
+| `plp_beat_service/debug_server.py`   | WebSocket debug server for visualization                          |
+| `plp_beat_service/static/debug.html` | Browser-based debug console                                       |
+| `plp-beat.service`                   | Systemd unit file for beat detection                              |
+| `test_data/`                         | Ground-truth beat data from rekordbox (JSON + MP3)                |
+| `preprocess_rekordbox.py`            | Generate test_data from rekordbox XML export                      |
+| `ws_control.py`                      | CLI tool using WebSocket API                                      |
+| `spotlight.qxw`                      | QLC+ project file (XML)                                           |
+| `qlcplus.service`                    | Systemd unit file for QLC+ headless operation                     |
+| `qlc-service.sh`                     | Helper script for QLC+ service management                         |
+| `pyproject.toml`                     | Package metadata and tool configuration                           |
+| `uv.lock`                            | Locked dependencies for reproducible installs                     |
+| `BEAT_DETECTION.md`                  | Technical docs for beat detection system                          |
+| `beat_to_midi.py`                    | **Deprecated** - aubio+PLL approach, replaced by plp_beat_service |
+| `audio_reactive.py`                  | **Deprecated** - direct DMX control                               |
+| `osc_control.py`                     | **Deprecated** - OSC control                                      |
 
 ## License
 

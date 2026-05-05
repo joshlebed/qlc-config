@@ -1,12 +1,15 @@
 # Keypad Service Integration Guide
 
-This document is for the engineer/agent integrating the `qlcplus` package into the keypad service running on the other server.
+This document is for the engineer/agent integrating the `qlcplus` package into
+the keypad service running on the other server.
 
 ## Overview
 
-The keypad service needs to control a QLC+ lighting server via WebSocket. The `qlcplus` package provides a clean Python client for this purpose.
+The keypad service needs to control a QLC+ lighting server via WebSocket. The
+`qlcplus` package provides a clean Python client for this purpose.
 
 **Network topology:**
+
 ```
 ┌─────────────────────┐                      ┌─────────────────────┐
 │  Keypad Service     │    WebSocket:9999    │  QLC+ Server        │
@@ -31,6 +34,7 @@ dependencies = [
 ```
 
 Then run:
+
 ```bash
 uv sync
 ```
@@ -66,17 +70,19 @@ with QLCPlusClient(host="192.168.0.221") as client:
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QLCPLUS_HOST` | `192.168.0.221` | QLC+ server IP |
-| `QLCPLUS_WS_PORT` | `9999` | WebSocket port |
+| Variable          | Default         | Description    |
+| ----------------- | --------------- | -------------- |
+| `QLCPLUS_HOST`    | `192.168.0.221` | QLC+ server IP |
+| `QLCPLUS_WS_PORT` | `9999`          | WebSocket port |
 
 Set these in your service's environment:
+
 ```bash
 export QLCPLUS_HOST=192.168.0.221
 ```
 
 Or pass directly to the client:
+
 ```python
 client = QLCPlusClient(host="192.168.0.221", port=9999)
 ```
@@ -85,12 +91,12 @@ client = QLCPlusClient(host="192.168.0.221", port=9999)
 
 These are the available lighting modes (QLC+ Scene functions):
 
-| ID | Name | Description | DMX Values |
-|----|------|-------------|------------|
-| 0 | `mode_off` | Light off | All channels 0 |
-| 1 | `mode_white` | Bright white | RGBW=255, Dimmer=255 |
-| 2 | `mode_red` | Red | R=255, Dimmer=255 |
-| 3 | `mode_yellow` | Yellow | R=255, G=255, Dimmer=255 |
+| ID  | Name          | Description  | DMX Values               |
+| --- | ------------- | ------------ | ------------------------ |
+| 0   | `mode_off`    | Light off    | All channels 0           |
+| 1   | `mode_white`  | Bright white | RGBW=255, Dimmer=255     |
+| 2   | `mode_red`    | Red          | R=255, Dimmer=255        |
+| 3   | `mode_yellow` | Yellow       | R=255, G=255, Dimmer=255 |
 
 ## Recommended Integration Pattern
 
@@ -262,11 +268,11 @@ except QLCPlusError as e:
 
 ### Common Errors
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Failed to connect` | QLC+ not running or wrong host | Check QLC+ is running with `-w` flag |
-| `Connection refused` | Port blocked or wrong port | Check firewall, verify port 9999 |
-| `Connection timed out` | Network issue | Check network connectivity |
+| Error                  | Cause                          | Solution                             |
+| ---------------------- | ------------------------------ | ------------------------------------ |
+| `Failed to connect`    | QLC+ not running or wrong host | Check QLC+ is running with `-w` flag |
+| `Connection refused`   | Port blocked or wrong port     | Check firewall, verify port 9999     |
+| `Connection timed out` | Network issue                  | Check network connectivity           |
 
 ## Testing the Connection
 
@@ -282,6 +288,7 @@ with QLCPlusClient(host='192.168.0.221') as c:
 ```
 
 Or use the CLI tool (if installed):
+
 ```bash
 QLCPLUS_HOST=192.168.0.221 qlc --list
 ```
@@ -292,16 +299,17 @@ QLCPLUS_HOST=192.168.0.221 qlc --list
 
 The package supports both, but WebSocket is preferred:
 
-| Feature | WebSocket | OSC |
-|---------|-----------|-----|
-| Idempotent | Yes (start/stop are absolute) | No (buttons toggle) |
-| Mutual exclusion | Manual in client | Solo Frame in QLC+ (unreliable via OSC) |
-| Status queries | Yes | No |
-| Port | 9999 | 7701 |
+| Feature          | WebSocket                     | OSC                                     |
+| ---------------- | ----------------------------- | --------------------------------------- |
+| Idempotent       | Yes (start/stop are absolute) | No (buttons toggle)                     |
+| Mutual exclusion | Manual in client              | Solo Frame in QLC+ (unreliable via OSC) |
+| Status queries   | Yes                           | No                                      |
+| Port             | 9999                          | 7701                                    |
 
 ### Thread Safety
 
-The `QLCPlusClient` is **not thread-safe**. Create a new client per thread, or use locking:
+The `QLCPlusClient` is **not thread-safe**. Create a new client per thread, or
+use locking:
 
 ```python
 import threading
@@ -315,7 +323,8 @@ def thread_safe_set_mode(mode: str) -> None:
 
 ### Connection Lifecycle
 
-The client connects on first use and disconnects when exiting the context manager:
+The client connects on first use and disconnects when exiting the context
+manager:
 
 ```python
 # Good: Connection opened and closed
