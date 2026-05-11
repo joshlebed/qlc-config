@@ -1,4 +1,4 @@
-.PHONY: help
+.PHONY: help deploy
 .PHONY: qlc-install qlc-start qlc-stop qlc-restart qlc-status qlc-logs qlc-gui
 .PHONY: beat-install beat-start beat-stop beat-restart beat-status beat-logs beat-debug
 .PHONY: plp plp-midi plp-clock plp-devices plp-benchmark
@@ -14,7 +14,10 @@ help:
 	@echo "QLC+ Lighting Control"
 	@echo "====================="
 	@echo ""
-	@echo "SERVICES (systemd):"
+	@echo "PUBLISH (run from laptop):"
+	@echo "  make deploy          Push + ssh-pull on mediaserver + restart qlcplus + plp-beat"
+	@echo ""
+	@echo "SERVICES (systemd, run ON mediaserver):"
 	@echo "  make qlc-install     Install QLC+ systemd service"
 	@echo "  make qlc-start       Start QLC+ lighting daemon"
 	@echo "  make qlc-stop        Stop QLC+ daemon"
@@ -356,3 +359,18 @@ audio-color:
 
 clean:
 	rm -rf .venv __pycache__ qlcplus/__pycache__ plp_beat_service/__pycache__ .pytest_cache .ty .ruff_cache
+
+# =============================================================================
+# Publish — laptop-side: push code, pull on mediaserver, restart services.
+# Standard verb across the homelab; see homelab-infra/docs/agent-onboarding.md.
+# =============================================================================
+
+deploy:
+	@echo "→ git push origin main"
+	git push origin main
+	@echo "→ ssh mediaserver: pull + restart qlcplus + plp-beat"
+	ssh mediaserver "cd /home/joshlebed/code/qlc-config && \
+	  git pull --rebase origin main && \
+	  sudo systemctl restart qlcplus plp-beat && \
+	  sleep 3 && \
+	  systemctl is-active qlcplus plp-beat"
