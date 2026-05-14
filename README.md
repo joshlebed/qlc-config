@@ -7,7 +7,7 @@ via WebSocket API.
 > (`192.168.0.221`), reached via WebSocket on port 9999 from the Pi's
 > `volume-control` service and from HA automations. Cross-cutting infra
 > (network, hosts, SSH, dev workflow) lives in
-> [`homelab-infra`](https://github.com/joshlebed/homelab-infra).
+> [`homelab`](https://github.com/joshlebed/homelab).
 
 ## Quick Start
 

@@ -3,12 +3,12 @@ read @README.md for high level context on the repo.
 # agent notes for qlc-config
 
 Cross-cutting infra docs (network, hosts, dev workflow, safety rails) live in
-the sibling [`homelab-infra`](https://github.com/joshlebed/homelab-infra) repo.
-If `~/code/homelab-infra` (or `/home/pi/code/homelab-infra` on the Pi,
-`/home/joshlebed/code/homelab-infra` on mediaserver) doesn't exist, clone it:
+the sibling [`homelab`](https://github.com/joshlebed/homelab) repo.
+If `~/code/homelab` (or `/home/pi/code/homelab` on the Pi,
+`/home/joshlebed/code/homelab` on mediaserver) doesn't exist, clone it:
 
 ```bash
-git clone git@github.com:joshlebed/homelab-infra.git ../homelab-infra
+git clone git@github.com:joshlebed/homelab.git ../homelab
 ```
 
 ## deployed on
@@ -76,4 +76,4 @@ and the half-window causal constraint for real-time.
 The QLC+ server is reachable from the Pi's `volume-control` service and from any
 HA automation that triggers a lighting scene. Breaking the systemd unit or the
 WebSocket port can cascade into "lights stop responding to the keypad / HA". See
-`../homelab-infra/CLAUDE.md` for the full safety-rail policy.
+`../homelab/CLAUDE.md` for the full safety-rail policy.

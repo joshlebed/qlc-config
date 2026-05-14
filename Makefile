@@ -362,7 +362,7 @@ clean:
 
 # =============================================================================
 # Publish — laptop-side: push code, pull on mediaserver, restart services.
-# Standard verb across the homelab; see homelab-infra/docs/agent-onboarding.md.
+# Standard verb across the homelab; see homelab/docs/agent-onboarding.md.
 # =============================================================================
 
 deploy:
