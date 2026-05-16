@@ -39,12 +39,9 @@ This repository contains:
 | `ws_control.py`     | CLI tool for controlling lights                                           |
 | `qlcplus.service`   | Systemd service for QLC+ headless operation                               |
 | `plp-beat.service`  | Systemd service for beat detection                                        |
-| `beat_to_midi.py`   | **Deprecated** - use `plp_beat_service` instead                           |
-| `audio_reactive.py` | **Deprecated** - legacy direct DMX control                                |
-| `osc_control.py`    | **Deprecated** - legacy OSC control                                       |
 
-See [BEAT_DETECTION.md](BEAT_DETECTION.md) for technical documentation on the
-beat detection system.
+For research/history on why we chose PLP, see
+[BEAT_DETECTION_RESEARCH.md](BEAT_DETECTION_RESEARCH.md).
 
 ### PLP Reference Implementation
 
@@ -587,10 +584,7 @@ Example in project file:
 | `qlc-service.sh`                     | Helper script for QLC+ service management                         |
 | `pyproject.toml`                     | Package metadata and tool configuration                           |
 | `uv.lock`                            | Locked dependencies for reproducible installs                     |
-| `BEAT_DETECTION.md`                  | Technical docs for beat detection system                          |
-| `beat_to_midi.py`                    | **Deprecated** - aubio+PLL approach, replaced by plp_beat_service |
-| `audio_reactive.py`                  | **Deprecated** - direct DMX control                               |
-| `osc_control.py`                     | **Deprecated** - OSC control                                      |
+| `BEAT_DETECTION_RESEARCH.md`         | Research notes on PLP vs. older approaches                        |
 
 ## License
 
