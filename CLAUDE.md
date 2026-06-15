@@ -46,6 +46,14 @@ the WebSocket API at `:9999`. Other repos in the homelab (notably
 
 ## beat detection (PLP) development
 
+**Status: on hold (2026-06-15).** The `plp-beat` systemd service is stopped and
+`disable`d on mediaserver — it won't start on boot, and the homelab
+`make verify` / `mediaserver-self-check.sh` probes intentionally skip it so an
+expected-down service doesn't read as a failure. Re-enable when resuming:
+`sudo systemctl enable --now plp-beat`, then add `plp-beat` back to the
+`SYSTEMD_UNITS` lists in `homelab/scripts/verify.sh` and
+`homelab/scripts/mediaserver-self-check.sh`.
+
 The `plp_beat_service/` implementation has jitter and BPM accuracy issues.
 
 **Reference implementation** (use as the guide):

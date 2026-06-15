@@ -290,6 +290,12 @@ journalctl -u qlcplus -f        # Live logs
 
 ### Beat Detection Service (PLP)
 
+> ⏸️ **On hold (2026-06-15).** The PLP beat project is paused; `plp-beat` is
+> stopped and `disable`d on mediaserver (won't start on boot), and is
+> intentionally excluded from the homelab `make verify` / self-check probes so
+> its being down isn't flagged as an error. Re-enable when work resumes:
+> `sudo systemctl enable --now plp-beat`.
+
 The PLP beat detection service runs as a separate systemd service, detecting
 beats from audio input and sending MIDI notes to QLC+.
 
