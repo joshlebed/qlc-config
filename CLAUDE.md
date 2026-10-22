@@ -1,4 +1,4 @@
-read @README.md for high level context on the repo.
+`README.md` is the human-facing overview (what this is, setup, usage); open it when a task needs those details.
 
 # agent notes for qlc-config
 
