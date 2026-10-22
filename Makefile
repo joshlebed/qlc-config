@@ -239,9 +239,11 @@ clean:
 deploy:
 	@echo "→ git push origin main"
 	git push origin main
-	@echo "→ ssh mediaserver: pull + restart qlcplus + plp-beat"
+	@echo "→ ssh mediaserver: pull + restart qlcplus (plp-beat is on hold since 2026-06-15 — deliberately NOT started here)"
 	ssh mediaserver "cd /home/joshlebed/code/qlc-config && \
 	  git pull --rebase origin main && \
-	  sudo systemctl restart qlcplus plp-beat && \
-	  sleep 3 && \
-	  systemctl is-active qlcplus plp-beat"
+	  sudo systemctl restart qlcplus && \
+	  sleep 4 && \
+	  systemctl is-active qlcplus && \
+	  ss -tln | grep -q ':9999 ' && echo '✓ qlcplus active, WebSocket :9999 listening'"
+	@echo "note: the Pi's volume-control consumes this package via 'make update-qlc' there; run that if qlcplus/ (the client) changed"
