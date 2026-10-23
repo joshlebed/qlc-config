@@ -1,0 +1,3 @@
+# Copy to deploy.local.mk (gitignored). Where `make deploy` pushes to.
+DEPLOY_HOST = qlc-server
+DEPLOY_DIR  = /home/you/code/qlc-config

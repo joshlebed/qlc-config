@@ -16,13 +16,13 @@ help:
 	@echo "====================="
 	@echo ""
 	@echo "PUBLISH (run from laptop):"
-	@echo "  make deploy          Push + ssh-pull on mediaserver + restart qlcplus + plp-beat"
+	@echo "  make deploy          Push + ssh-pull on the server + restart qlcplus (needs deploy.local.mk)"
 	@echo ""
-	@echo "SERVICES (systemd, run ON mediaserver):"
+	@echo "SERVICES (systemd, run ON the server):"
 	@echo "  make qlc-{install,start,stop,restart,status,logs,gui}"
 	@echo "  make beat-{install,start,stop,restart,status,logs,debug}"
 	@echo "  (also: make {install,start,stop,restart,status,logs,gui} — standard"
-	@echo "         homelab verbs; aliased to qlc-*)"
+	@echo "         standard verbs; aliased to qlc-*)"
 	@echo ""
 	@echo "LIGHT CONTROL:"
 	@echo "  make red|blue|green|yellow|orange|cyan|purple|pink|white|off|fade"
@@ -45,7 +45,7 @@ help:
 	@echo "  make test            Run pytest"
 	@echo "  make lint            Run ruff linter"
 	@echo "  make format          Format code with ruff"
-	@echo "  make check           lint + ty type checker (homelab \"check\" verb)"
+	@echo "  make check           lint + ty type checker"
 	@echo "  make clean           Remove cache files"
 
 # =============================================================================
@@ -73,7 +73,7 @@ qlc-logs:
 qlc-gui:
 	@./qlc-service.sh gui
 
-# Standard homelab verbs (aliased to qlc-*). Lets `make restart` mean "restart
+# Standard verbs (aliased to qlc-*). Lets `make restart` mean "restart
 # the service" consistently across child repos.
 install: qlc-install
 start: qlc-start
@@ -118,7 +118,7 @@ beat-debug:
 	@echo "PLP Beat Debug Console"
 	@echo "======================"
 	@echo ""
-	@echo "Open in browser: http://192.168.0.221:8080/debug.html"
+	@echo "Open in browser: http://$(QLCPLUS_HOST):8080/debug.html"
 	@echo ""
 	@echo "Shows real-time:"
 	@echo "  - Onset envelope (transient detection)"
@@ -232,18 +232,21 @@ clean:
 	rm -rf .venv __pycache__ qlcplus/__pycache__ plp_beat_service/__pycache__ .pytest_cache .ty .ruff_cache
 
 # =============================================================================
-# Publish — laptop-side: push code, pull on mediaserver, restart services.
-# Standard verb across the homelab; see homelab/CLAUDE.md.
-# =============================================================================
-
+# Publish: push, pull on the server, restart the daemon, verify. The target host
+# lives in a gitignored deploy.local.mk (see deploy.local.mk.example).
+-include deploy.local.mk
+DEPLOY_HOST ?=
+DEPLOY_DIR ?=
 deploy:
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST/DEPLOY_DIR in deploy.local.mk (copy deploy.local.mk.example)"; exit 2; }
 	@echo "→ git push origin main"
 	git push origin main
-	@echo "→ ssh mediaserver: pull + restart qlcplus (plp-beat is on hold since 2026-06-15 — deliberately NOT started here)"
-	ssh mediaserver "cd /home/joshlebed/code/qlc-config && \
+	@echo "→ ssh $(DEPLOY_HOST): pull + restart qlcplus (plp-beat is on hold — deliberately NOT started here)"
+	ssh $(DEPLOY_HOST) "cd $(DEPLOY_DIR) && \
 	  git pull --rebase origin main && \
 	  sudo systemctl restart qlcplus && \
 	  sleep 4 && \
 	  systemctl is-active qlcplus && \
 	  ss -tln | grep -q ':9999 ' && echo '✓ qlcplus active, WebSocket :9999 listening'"
-	@echo "note: the Pi's volume-control consumes this package via 'make update-qlc' there; run that if qlcplus/ (the client) changed"
+	@echo "note: client machines consume this package from git; re-install it there if qlcplus/ (the client) changed"
+

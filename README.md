@@ -3,12 +3,6 @@
 Python client library and configuration for controlling QLC+ lighting software
 via WebSocket API.
 
-> **Deployed in the homelab**: QLC+ daemon runs on `mediaserver`
-> (`192.168.0.221`), reached via WebSocket on port 9999 from the Pi's
-> `volume-control` service and from HA automations. Cross-cutting infra
-> (network, hosts, SSH, dev workflow) lives in
-> [`homelab`](https://github.com/joshlebed/homelab).
-
 ## Quick Start
 
 ```bash
@@ -16,7 +10,7 @@ via WebSocket API.
 uv pip install git+https://github.com/joshlebed/qlc-config.git
 
 # Set the QLC+ host
-export QLCPLUS_HOST=192.168.0.221
+export QLCPLUS_HOST=qlc-server.local
 
 # Control the light
 qlc red      # Turn light red
@@ -79,7 +73,7 @@ Papers:
 ```
 ┌─────────────────────┐     WebSocket (9999)     ┌─────────────────┐
 │  Keypad Service     │ ────────────────────────▶│  QLC+           │
-│  (other server)     │                          │  192.168.0.221  │
+│  (other server)     │                          │  qlc-server.local  │
 └─────────────────────┘                          └────────┬────────┘
                                                           │ DMX512
 ┌─────────────────────┐     WebSocket (9999)              ▼
@@ -117,7 +111,7 @@ uv sync --dev
 from qlcplus import QLCPlusClient
 
 # Connect with context manager (auto-disconnects)
-with QLCPlusClient(host="192.168.0.221") as client:
+with QLCPlusClient(host="qlc-server.local") as client:
     # Start a function by ID
     client.start_function(2)  # mode_red
 
@@ -139,7 +133,7 @@ with QLCPlusClient(host="192.168.0.221") as client:
 
 | Variable          | Default         | Description            |
 | ----------------- | --------------- | ---------------------- |
-| `QLCPLUS_HOST`    | `192.168.0.221` | QLC+ server IP address |
+| `QLCPLUS_HOST`    | `localhost`     | QLC+ server host/IP (set it on any machine that is not the daemon host) |
 | `QLCPLUS_WS_PORT` | `9999`          | WebSocket port         |
 
 ### Function IDs
@@ -174,7 +168,7 @@ def set_mode(mode: str) -> None:
 
 ### QLC+ Server
 
-- **Host**: `192.168.0.221`
+- **Host**: `qlc-server.local`
 - **WebSocket Port**: `9999`
 - **OSC Port**: `7701` (legacy)
 
@@ -291,9 +285,9 @@ journalctl -u qlcplus -f        # Live logs
 ### Beat Detection Service (PLP)
 
 > ⏸️ **On hold (2026-06-15).** The PLP beat project is paused; `plp-beat` is
-> stopped and `disable`d on mediaserver (won't start on boot), and is
-> intentionally excluded from the homelab `make verify` / self-check probes so
-> its being down isn't flagged as an error. Re-enable when work resumes:
+> stopped and `disable`d on the server (won't start on boot), and is
+> intentionally excluded from the deployment's health probes so its being down
+> isn't flagged as an error. Re-enable when work resumes:
 > `sudo systemctl enable --now plp-beat`.
 
 The PLP beat detection service runs as a separate systemd service, detecting
@@ -315,7 +309,7 @@ make beat-debug      # Show debug console URL
 
 The service includes a real-time browser-based visualization:
 
-- Open `http://192.168.0.221:8080/debug.html` in a browser
+- Open `http://qlc-server.local:8080/debug.html` in a browser
 - Shows onset envelope, PLP pulse curve, and confidence metrics
 - Displays current BPM, state (SEARCHING/LOCKED/HOLDOVER), and beat count
 
@@ -349,7 +343,7 @@ headless.
 brew install --cask xquartz
 
 # SSH with X11 forwarding
-ssh -Y user@192.168.0.221
+ssh -Y user@qlc-server.local   # the machine running QLC+
 
 # Run QLC+ with web access
 qlcplus -w -o /opt/qlcplus/projects/spotlight.qxw
@@ -477,7 +471,7 @@ ps aux | grep qlcplus
 ss -tln | grep 9999
 
 # Test connection
-curl -s http://192.168.0.221:9999/
+curl -s http://qlc-server.local:9999/
 ```
 
 **After service restart**: The WebSocket server takes ~3 seconds to initialize.

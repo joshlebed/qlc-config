@@ -23,16 +23,16 @@ class QLCPlusClient:
     is safe and won't toggle it off.
 
     Usage:
-        client = QLCPlusClient("192.168.0.221")
+        client = QLCPlusClient("qlc-server.local")
         client.start_function(2)  # Start function ID 2
         client.stop_function(2)   # Stop function ID 2
 
         # Or use context manager for auto-disconnect
-        with QLCPlusClient("192.168.0.221") as client:
+        with QLCPlusClient("qlc-server.local") as client:
             client.start_function(2)
     """
 
-    DEFAULT_HOST = "192.168.0.221"
+    DEFAULT_HOST = "localhost"
     DEFAULT_PORT = 9999
     DEFAULT_TIMEOUT = 5
 
@@ -47,7 +47,7 @@ class QLCPlusClient:
 
         Args:
             host: QLC+ server hostname/IP. Defaults to QLCPLUS_HOST env var
-                  or 192.168.0.221
+                  or localhost
             port: WebSocket port. Defaults to QLCPLUS_WS_PORT env var or 9999
             timeout: Connection timeout in seconds
         """

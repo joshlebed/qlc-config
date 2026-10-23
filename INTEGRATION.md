@@ -13,7 +13,7 @@ The keypad service needs to control a QLC+ lighting server via WebSocket. The
 ```
 ┌─────────────────────┐                      ┌─────────────────────┐
 │  Keypad Service     │    WebSocket:9999    │  QLC+ Server        │
-│  (your server)      │ ──────────────────▶  │  192.168.0.221      │
+│  (your server)      │ ──────────────────▶  │  qlc-server.local      │
 │                     │                      │                     │
 │  Hardware keypad    │                      │  USB-DMX adapter    │
 │  ↓                  │                      │  ↓                  │
@@ -59,7 +59,7 @@ dependencies = [
 from qlcplus import QLCPlusClient
 
 # Set the light to red
-with QLCPlusClient(host="192.168.0.221") as client:
+with QLCPlusClient(host="qlc-server.local") as client:
     client.stop_function(0)   # Stop mode_off
     client.stop_function(1)   # Stop mode_white
     client.stop_function(3)   # Stop mode_yellow
@@ -72,19 +72,19 @@ with QLCPlusClient(host="192.168.0.221") as client:
 
 | Variable          | Default         | Description    |
 | ----------------- | --------------- | -------------- |
-| `QLCPLUS_HOST`    | `192.168.0.221` | QLC+ server IP |
+| `QLCPLUS_HOST`    | `localhost` | QLC+ server host/IP |
 | `QLCPLUS_WS_PORT` | `9999`          | WebSocket port |
 
 Set these in your service's environment:
 
 ```bash
-export QLCPLUS_HOST=192.168.0.221
+export QLCPLUS_HOST=qlc-server.local
 ```
 
 Or pass directly to the client:
 
 ```python
-client = QLCPlusClient(host="192.168.0.221", port=9999)
+client = QLCPlusClient(host="qlc-server.local", port=9999)
 ```
 
 ## Function Reference
@@ -127,7 +127,7 @@ class SpotlightController:
         "yellow": 3,
     }
 
-    def __init__(self, host: str = "192.168.0.221", port: int = 9999):
+    def __init__(self, host: str = "qlc-server.local", port: int = 9999):
         self.host = host
         self.port = port
         self._current_mode: str | None = None
@@ -204,7 +204,7 @@ from spotlight_controller import SpotlightController
 from qlcplus import QLCPlusError
 
 # Initialize once at startup
-spotlight = SpotlightController(host="192.168.0.221")
+spotlight = SpotlightController(host="qlc-server.local")
 
 def handle_keypad_event(key: int) -> None:
     """Handle a keypad button press."""
@@ -282,7 +282,7 @@ Quick test from the command line:
 # Test connection
 python3 -c "
 from qlcplus import QLCPlusClient
-with QLCPlusClient(host='192.168.0.221') as c:
+with QLCPlusClient(host='qlc-server.local') as c:
     print('Functions:', c.get_functions_list())
 "
 ```
@@ -290,7 +290,7 @@ with QLCPlusClient(host='192.168.0.221') as c:
 Or use the CLI tool (if installed):
 
 ```bash
-QLCPLUS_HOST=192.168.0.221 qlc --list
+QLCPLUS_HOST=qlc-server.local qlc --list
 ```
 
 ## Architecture Notes
@@ -345,7 +345,7 @@ finally:
 
 If you need new lighting modes:
 
-1. Create the scene in QLC+ GUI (on 192.168.0.221)
+1. Create the scene in QLC+ GUI (on qlc-server.local)
 2. Save the project
 3. Note the new function ID (use `--list` to see all)
 4. Add to your `MODES` dict
@@ -369,7 +369,7 @@ To check if QLC+ is responsive:
 def health_check() -> bool:
     """Return True if QLC+ is reachable."""
     try:
-        with QLCPlusClient(host="192.168.0.221", timeout=2) as client:
+        with QLCPlusClient(host="qlc-server.local", timeout=2) as client:
             client.get_functions_list()
         return True
     except QLCPlusError:
@@ -379,5 +379,5 @@ def health_check() -> bool:
 ## Questions?
 
 - **Package source**: https://github.com/joshlebed/qlc-config
-- **QLC+ server**: 192.168.0.221
+- **QLC+ server**: qlc-server.local
 - **WebSocket port**: 9999

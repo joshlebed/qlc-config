@@ -2,21 +2,12 @@
 
 # agent notes for qlc-config
 
-Cross-cutting infra docs (network, hosts, dev workflow, safety rails) live in
-the sibling [`homelab`](https://github.com/joshlebed/homelab) repo.
-If `~/code/homelab` (or `/home/pi/code/homelab` on the Pi,
-`/home/joshlebed/code/homelab` on mediaserver) doesn't exist, clone it:
-
-```bash
-git clone git@github.com:joshlebed/homelab.git ../homelab
-```
-
 ## deployed on
 
-Cloned on both `pi` (lighting client) and `mediaserver` (QLC+ headless server at
-`192.168.0.221`). The QLC+ daemon runs on mediaserver via systemd and listens on
-the WebSocket API at `:9999`. Other repos in the homelab (notably
-`volume-control` on the Pi) use this package as a Python client.
+Two roles: the **server** (a Linux box running the QLC+ daemon headless via
+systemd, WebSocket API on `:9999`, USB-DMX attached) and **clients** (any
+machine importing the `qlcplus` package — e.g. a keypad service — with
+`QLCPLUS_HOST` pointing at the server).
 
 ## quick reference
 
@@ -47,12 +38,10 @@ the WebSocket API at `:9999`. Other repos in the homelab (notably
 ## beat detection (PLP) development
 
 **Status: on hold (2026-06-15).** The `plp-beat` systemd service is stopped and
-`disable`d on mediaserver — it won't start on boot, and the homelab
-`make verify` / `mediaserver-self-check.sh` probes intentionally skip it so an
-expected-down service doesn't read as a failure. Re-enable when resuming:
-`sudo systemctl enable --now plp-beat`, then add `plp-beat` back to the
-`SYSTEMD_UNITS` lists in `homelab/scripts/verify.sh` and
-`homelab/scripts/mediaserver-self-check.sh`.
+`disable`d on the server — it won't start on boot, and the deployment's health
+probes intentionally skip it so an expected-down service doesn't read as a
+failure. Re-enable when resuming: `sudo systemctl enable --now plp-beat`, and
+add it back to whatever monitors the server's units.
 
 The `plp_beat_service/` implementation has jitter and BPM accuracy issues.
 
@@ -81,7 +70,6 @@ and the half-window causal constraint for real-time.
 
 ## production-critical reminder
 
-The QLC+ server is reachable from the Pi's `volume-control` service and from any
-HA automation that triggers a lighting scene. Breaking the systemd unit or the
-WebSocket port can cascade into "lights stop responding to the keypad / HA". See
-`../homelab/CLAUDE.md` for the full safety-rail policy.
+The QLC+ server is what the household's keypad service and lighting automations
+talk to. Breaking the systemd unit or the
+WebSocket port can cascade into "lights stop responding to the keypad / HA".
